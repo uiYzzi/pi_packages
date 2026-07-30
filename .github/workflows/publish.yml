@@ -1,0 +1,43 @@
+name: publish
+
+on:
+  push:
+    tags: ["*-v*"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC trusted publishing
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: parse tag
+        id: tag
+        run: |
+          TAG="${{ github.ref_name }}"
+          PKG="${TAG%%-v*}"
+          echo "package=$PKG" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: packages/${{ steps.tag.outputs.package }}/package-lock.json
+
+      - name: upgrade npm (trusted publishing requires >= 11.5.1)
+        run: npm install -g npm@latest
+
+      - run: npm ci
+        working-directory: packages/${{ steps.tag.outputs.package }}
+
+      - run: npm test
+        working-directory: packages/${{ steps.tag.outputs.package }}
+
+      - run: npm run build
+        working-directory: packages/${{ steps.tag.outputs.package }}
+
+      - run: npm publish --access public
+        working-directory: packages/${{ steps.tag.outputs.package }}
