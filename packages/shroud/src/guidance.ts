@@ -1,35 +1,21 @@
 /**
- * System prompt guidance injected before each agent turn.
+ * System prompt guidance injected before each agent turn. Keep it terse.
  */
 
 import type { SecretDef } from "./engine.js";
 
 export function buildGuidance(secrets: SecretDef[]): string {
-  const shellVars = secrets.map((e) => `$${e.name}`);
   const lines = [
-    "## Secret firewall (IMPORTANT)",
-    "",
-    "Secret values in this session are redacted before you see them and replaced by a",
-    'placeholder that looks like: «SECRET NAME redacted — ... read it in bash as "$NAME"».',
-    "",
-    "What this means:",
-    "- The placeholder is NOT the secret value and NOT an empty/missing variable.",
-    "- The REAL value IS present and live in your shell environment under its original",
-    "  variable name. The env var is fully usable.",
-    "- To USE a secret, reference it by name inside a `bash` command.",
-    "",
-    "Examples (these WORK — the value is injected by the shell, never shown to you):",
-    '  bash: curl -H "Authorization: Bearer $OPENAI_API_KEY" https://api.example.com',
-    '  bash: psql "$DATABASE_URL" -c \'select 1\'',
-    "",
-    "Rules:",
-    "- Never echo, cat, print, or write a secret value to a file or to your output.",
-    "- To check a secret exists without printing it:",
-    '  bash: [ -n "$OPENAI_API_KEY" ] && echo present || echo missing',
+    "## Secret firewall",
+    "Secret values are redacted from your context and replaced by placeholders like",
+    '«SECRET NAME redacted — ... read it in bash as "$NAME"».',
+    "The real values are live in your shell env under those names — fully usable.",
+    'Use them in bash, e.g. curl -H "Authorization: Bearer $OPENAI_API_KEY" ...',
+    "Never echo, cat, print, or write a secret value anywhere.",
   ];
 
-  if (shellVars.length > 0) {
-    lines.push("", `Currently available secret env vars: ${shellVars.join(", ")}.`);
+  if (secrets.length > 0) {
+    lines.push(`Available: ${secrets.map((e) => `$${e.name}`).join(", ")}.`);
   }
 
   return lines.join("\n");

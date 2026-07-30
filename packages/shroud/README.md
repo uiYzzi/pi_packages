@@ -33,6 +33,13 @@ pi install npm:@uiyzzi/pi-shroud
 `/shroud-toggle` — 开关 redact
 `/shroud-rescan` — 重新扫描 env 和凭据文件
 
+## 和 askpass 联动（自动）
+
+装了 [pi-askpass](../askpass/) 时，两包通过 `globalThis` 周知 Symbol 桥同步，无共享代码、各自可独立工作、加载顺序无关：
+
+- **push**：askpass 每次捕获密钥，立即推进 shroud 的 redactor（`addRuntimeSecret`），无 rescan 空窗
+- **pull**：rescan 时 shroud 拉取 askpass 已捕获列表，覆盖 shroud 加载前捕获的密钥；同名冲突 askpass 的值胜（最新）
+
 ## 配置
 
 `~/.pi/agent/shroud.json`（全局）和 `.pi/shroud.json`（项目），deep merge，项目优先。
@@ -81,7 +88,8 @@ src/
 ├── engine.ts        联合正则引擎，一次扫描
 ├── discovery.ts     事前发现（env / auth.json / .netrc / aws / docker / .env）
 ├── config.ts         配置加载
-├── hooks.ts          四个事件钩子 + 环境变量碰撞保护
+├── hooks.ts          四个事件钩子 + 环境变量碰撞保护 + addRuntimeSecret
+├── bridge.ts         askpass 联动（globalThis symbol 桥，双向）
 ├── commands.ts       三个 /shroud 命令
 └── util.ts           工具函数
 ```

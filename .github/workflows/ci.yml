@@ -13,6 +13,7 @@ jobs:
       matrix:
         package:
           - shroud
+          - askpass
     defaults:
       run:
         working-directory: packages/${{ matrix.package }}

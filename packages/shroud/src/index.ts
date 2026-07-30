@@ -13,6 +13,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createRedactor } from "./engine.js";
 import { createState, registerHooks } from "./hooks.js";
 import { registerCommands } from "./commands.js";
+import { registerBridge } from "./bridge.js";
 
 export default function (pi: ExtensionAPI) {
   const redactor = createRedactor();
@@ -20,4 +21,5 @@ export default function (pi: ExtensionAPI) {
 
   registerHooks(pi, state);
   registerCommands(pi, state);
+  registerBridge(state);
 }

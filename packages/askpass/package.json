@@ -1,7 +1,7 @@
 {
-  "name": "@uiyzzi/pi-shroud",
-  "version": "0.1.5",
-  "description": "High-performance secret firewall for pi — secrets usable as shell vars, never visible to models",
+  "name": "@uiyzzi/pi-askpass",
+  "version": "0.1.2",
+  "description": "TUI secret prompt for pi — agent asks, user types in a masked input, value never reaches the model",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -31,7 +31,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/uiYzzi/pi_packages.git",
-    "directory": "packages/shroud"
+    "directory": "packages/askpass"
   },
   "author": "uiYzzi",
   "license": "MIT",
@@ -39,7 +39,8 @@
     "pi-package",
     "pi",
     "secret",
-    "redact",
-    "firewall"
+    "askpass",
+    "password",
+    "prompt"
   ]
 }

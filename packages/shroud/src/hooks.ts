@@ -11,6 +11,7 @@ import type { Redactor, SecretDef, CapturedSecret } from "./engine.js";
 import { discoverSecrets } from "./discovery.js";
 import { loadConfig } from "./config.js";
 import { buildGuidance } from "./guidance.js";
+import { getAskpassSecrets } from "./bridge.js";
 
 type ContentBlock = TextContent | ImageContent;
 
@@ -39,9 +40,31 @@ export function createState(redactor: Redactor): ShroudState {
 /** Re-discover secrets, rebuild redactor, export to shell. */
 export function rescan(cwd: string, st: ShroudState): void {
   const config = loadConfig(cwd);
-  st.secrets = discoverSecrets(cwd, config.discovery);
+  const discovered = discoverSecrets(cwd, config.discovery);
+
+  // Merge secrets captured by askpass (if installed). askpass wins on name
+  // conflict — its value is the freshest (user just typed it).
+  const merged = [...discovered];
+  for (const s of getAskpassSecrets()) {
+    const i = merged.findIndex((m) => m.name === s.name);
+    if (i >= 0) merged[i] = s;
+    else merged.push(s);
+  }
+
+  st.secrets = merged;
   st.redactor.refresh(st.secrets);
   st.redactor.refreshPatterns(config.patterns);
+  exportSecrets(st.secrets, st.ownedNames, st.savedEnv);
+}
+
+/**
+ * Add a secret captured at runtime (e.g. pushed by askpass via the bridge).
+ * Refreshes the redactor immediately — no rescan needed.
+ */
+export function addRuntimeSecret(st: ShroudState, name: string, value: string): void {
+  st.secrets = st.secrets.filter((s) => s.name !== name);
+  st.secrets.push({ name, value });
+  st.redactor.refresh(st.secrets);
   exportSecrets(st.secrets, st.ownedNames, st.savedEnv);
 }
 

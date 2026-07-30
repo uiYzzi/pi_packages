@@ -13,19 +13,24 @@ test("guidance includes shell var list when secrets present", () => {
   ]);
   assert.ok(guidance.includes("$OPENAI_API_KEY"));
   assert.ok(guidance.includes("$DATABASE_URL"));
-  assert.ok(guidance.includes("IMPORTANT"));
+  assert.ok(guidance.includes("redacted"));
   assert.ok(guidance.includes("placeholder"));
 });
 
 test("guidance works with empty secrets list", () => {
   const guidance = buildGuidance([]);
-  assert.ok(guidance.includes("IMPORTANT"));
-  assert.ok(!guidance.includes("Currently available secret env vars"));
+  assert.ok(guidance.includes("redacted"));
+  assert.ok(!guidance.includes("Available:"));
 });
 
 test("guidance includes usage rules", () => {
   const guidance = buildGuidance([{ name: "KEY", value: "some_value_12345678" }]);
   assert.ok(guidance.includes("Never echo"));
-  assert.ok(guidance.includes("[ -n "));
+  assert.ok(guidance.includes("bash"));
   assert.ok(guidance.includes("curl"));
+});
+
+test("guidance stays terse", () => {
+  const guidance = buildGuidance([{ name: "KEY", value: "some_value_12345678" }]);
+  assert.ok(guidance.split("\n").length <= 10);
 });
