@@ -2,7 +2,7 @@
  * Masked secret prompt dialog rendered in pi's TUI (replaces the editor row).
  */
 
-import type { Component, Focusable, TUI } from "@earendil-works/pi-tui";
+import { truncateToWidth, type Component, type Focusable, type TUI } from "@earendil-works/pi-tui";
 import type { KeybindingsManager } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -40,12 +40,17 @@ export class SecretPrompt implements Component, Focusable {
 
   render(width: number): string[] {
     const t = this.theme;
+    const max = Math.max(1, width);
+    // Subtitles may contain embedded newlines (multi-line commands) and
+    // arbitrary widths — flatten and truncate so no line exceeds `width`.
+    const oneLine = (s: string) => s.replace(/\r?\n/g, " ⏎ ");
+    const line = (s: string) => truncateToWidth(s, max);
     return [
-      ` ${t.fg("accent", t.bold(`🔒 ${this.title}`))}`,
-      ` ${t.fg("dim", this.subtitle)}`,
+      line(` ${t.fg("accent", t.bold(`🔒 ${oneLine(this.title)}`))}`),
+      line(` ${t.fg("dim", oneLine(this.subtitle))}`),
       "",
       ...this.input.render(width),
-      ` ${t.fg("dim", "Enter to confirm · Esc to cancel · input is masked")}`,
+      line(` ${t.fg("dim", "Enter to confirm · Esc to cancel · input is masked")}`),
     ];
   }
 }

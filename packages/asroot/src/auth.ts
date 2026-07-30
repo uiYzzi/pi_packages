@@ -14,7 +14,12 @@ import {
   type AsrootState,
 } from "./state.js";
 
-const MAX_CMD_PREVIEW = 100;
+const MAX_CMD_PREVIEW = 80;
+
+/** Flatten multi-line commands so the dialog renders one clean line. */
+function flattenCommand(command: string): string {
+  return command.replace(/\r?\n/g, " ⏎ ").replace(/ {2,}/g, " ").trim();
+}
 
 /**
  * Return a valid sudo password, prompting when the cache is cold/expired.
@@ -32,8 +37,9 @@ export async function ensurePassword(
     throw new Error("asroot needs an interactive TUI to ask for the sudo password.");
   }
 
+  const flat = flattenCommand(command);
   const preview =
-    command.length > MAX_CMD_PREVIEW ? `${command.slice(0, MAX_CMD_PREVIEW)}…` : command;
+    flat.length > MAX_CMD_PREVIEW ? `${flat.slice(0, MAX_CMD_PREVIEW)}…` : flat;
   const user = process.env.USER ?? "current user";
 
   const password = await promptSecret(

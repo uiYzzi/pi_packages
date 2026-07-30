@@ -29,6 +29,28 @@ test("referencesSudo ignores lookalikes", () => {
   assert.ok(!referencesSudo("ls /tmp"));
 });
 
+test("referencesSudo ignores quoted prose", () => {
+  assert.ok(
+    !referencesSudo(
+      'git commit -m "fix: an over-wide sudo command subtitle crashed the TUI"',
+    ),
+  );
+  assert.ok(!referencesSudo("git commit -m 'mention sudo here'"));
+  assert.ok(!referencesSudo('echo "escaped \\" sudo rm \\" quote"'));
+  assert.ok(!referencesSudo("echo done # sudo rm -rf / is a comment"));
+  // sudo outside the quotes still counts.
+  assert.ok(referencesSudo('echo "no root" && sudo id'));
+});
+
+test("referencesSudo sees through command substitution", () => {
+  // Backticks and $( ) execute — sudo inside them is real.
+  assert.ok(referencesSudo("echo `sudo ls`"));
+  assert.ok(referencesSudo("echo $(sudo id)"));
+  assert.ok(referencesSudo('echo "nested $(sudo id) in quotes"'));
+  // Path-qualified sudo counts too.
+  assert.ok(referencesSudo("/usr/bin/sudo ls"));
+});
+
 test("freshPassword returns value while fresh, drops when expired", () => {
   const st = createState();
   st.cached = { value: "hunter2hunter2", expiresAt: Date.now() + 60_000 };
