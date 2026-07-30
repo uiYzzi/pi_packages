@@ -24,5 +24,7 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      # dependents compile against secret-kit's dist, which a fresh checkout lacks
+      - run: npm run build -w packages/secret-kit
       - run: npm run lint -w packages/${{ matrix.package }}
       - run: npm test -w packages/${{ matrix.package }}

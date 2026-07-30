@@ -1,6 +1,6 @@
 {
   "name": "@uiyzzi/pi-asroot",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "sudo for pi — agent asks, user types their password into a masked TUI input, password never reaches the model",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,8 +20,8 @@
     "@earendil-works/pi-coding-agent": ">=0.74.0"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.79.4",
     "@earendil-works/pi-ai": "^0.79.4",
+    "@earendil-works/pi-coding-agent": "^0.79.4",
     "@earendil-works/pi-tui": "^0.79.4",
     "@types/node": "^20.10.0",
     "typescript": "^5.3.0"

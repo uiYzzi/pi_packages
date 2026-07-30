@@ -33,6 +33,9 @@ jobs:
       # npm workspace: install once at the root, then test/build/publish the package
       - run: npm ci
 
+      # dependents compile against secret-kit's dist, which a fresh checkout lacks
+      - run: npm run build -w packages/secret-kit
+
       - run: npm test -w packages/${{ steps.tag.outputs.package }}
 
       - run: npm run build -w packages/${{ steps.tag.outputs.package }}
