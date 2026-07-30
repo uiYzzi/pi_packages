@@ -8,7 +8,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MaskedInput } from "./masked-input.js";
 
-class SecretPrompt implements Component, Focusable {
+export class SecretPrompt implements Component, Focusable {
   private input = new MaskedInput();
   private title: string;
   private subtitle: string;

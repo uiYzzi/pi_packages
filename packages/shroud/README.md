@@ -16,7 +16,7 @@ pi 的 secret firewall。agent 能用你的 API key，但永远看不到值。
 模型看到的永远是占位符：
 
 ```
-sk-abc123...  →  «SECRET OPENAI_API_KEY — read as "$OPENAI_API_KEY"»
+sk-abc123...  →  «SECRET OPENAI_API_KEY redacted — ... read it in bash as "$OPENAI_API_KEY"»
 ```
 
 模型在 bash 里引用 `$OPENAI_API_KEY`，shell 解析真实值，值从不进模型上下文。16 个内置 pattern（JWT、AWS key、GitHub token、PEM block、连接串...）兜底匹配未知格式。
@@ -29,16 +29,16 @@ pi install npm:@uiyzzi/pi-shroud
 
 ## 命令
 
-`/shroud` — 当前保护了多少 secret，拦截了多少次
-`/shroud-toggle` — 开关 redact
-`/shroud-rescan` — 重新扫描 env 和凭据文件
+`/shroud`：当前保护了多少 secret，拦截了多少次
+`/shroud-toggle`：开关 redact
+`/shroud-rescan`：重新扫描 env 和凭据文件
 
 ## 和 askpass 联动（自动）
 
-装了 [pi-askpass](../askpass/) 时，两包通过 `globalThis` 周知 Symbol 桥同步，无共享代码、各自可独立工作、加载顺序无关：
+装了 [pi-askpass](../askpass/) 时自动同步，走 `globalThis` 周知 Symbol 桥。桥是 duck-typed 的，没装对方就静默跳过，加载顺序无所谓。
 
-- **push**：askpass 每次捕获密钥，立即推进 shroud 的 redactor（`addRuntimeSecret`），无 rescan 空窗
-- **pull**：rescan 时 shroud 拉取 askpass 已捕获列表，覆盖 shroud 加载前捕获的密钥；同名冲突 askpass 的值胜（最新）
+- **push**：askpass 每捕获一个密钥，立刻推进 shroud 的 redactor（`addRuntimeSecret`），没有 rescan 空窗
+- **pull**：shroud rescan 时拉 askpass 的已捕获列表，加载前捕获的也覆盖；同名冲突以 askpass 为准，用户刚输的总是最新
 
 ## 配置
 
@@ -109,5 +109,5 @@ src/
 ```bash
 npm install
 npm run build      # tsc → dist/
-npm test           # 76 测试（单元 + 性能 + 边界）
+npm test           # 77 测试（单元 + 性能 + 边界）
 ```

@@ -12,18 +12,17 @@ jobs:
     strategy:
       matrix:
         package:
+          - secret-kit
           - shroud
           - askpass
-    defaults:
-      run:
-        working-directory: packages/${{ matrix.package }}
+          - asroot
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: packages/${{ matrix.package }}/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
-      - run: npm run lint
-      - run: npm test
+      - run: npm run lint -w packages/${{ matrix.package }}
+      - run: npm test -w packages/${{ matrix.package }}

@@ -1,7 +1,7 @@
 {
-  "name": "@uiyzzi/pi-askpass",
-  "version": "0.2.0",
-  "description": "TUI secret prompt for pi — agent asks, user types in a masked input, value never reaches the model",
+  "name": "@uiyzzi/pi-secret-kit",
+  "version": "0.1.0",
+  "description": "Shared masked-input TUI components and secret-handling utilities for pi extensions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -17,21 +17,16 @@
     "@earendil-works/pi-coding-agent": ">=0.74.0"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^0.79.4",
     "@earendil-works/pi-coding-agent": "^0.79.4",
+    "@earendil-works/pi-ai": "^0.79.4",
     "@earendil-works/pi-tui": "^0.79.4",
     "@types/node": "^20.10.0",
     "typescript": "^5.3.0"
   },
-  "pi": {
-    "extensions": [
-      "./dist/index.js"
-    ]
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/uiYzzi/pi_packages.git",
-    "directory": "packages/askpass"
+    "directory": "packages/secret-kit"
   },
   "author": "uiYzzi",
   "license": "MIT",
@@ -39,11 +34,7 @@
     "pi-package",
     "pi",
     "secret",
-    "askpass",
-    "password",
+    "masked-input",
     "prompt"
-  ],
-  "dependencies": {
-    "@uiyzzi/pi-secret-kit": "^0.1.0"
-  }
+  ]
 }

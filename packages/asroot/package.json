@@ -1,7 +1,7 @@
 {
-  "name": "@uiyzzi/pi-askpass",
-  "version": "0.2.0",
-  "description": "TUI secret prompt for pi — agent asks, user types in a masked input, value never reaches the model",
+  "name": "@uiyzzi/pi-asroot",
+  "version": "0.1.0",
+  "description": "sudo for pi — agent asks, user types their password into a masked TUI input, password never reaches the model",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -13,12 +13,15 @@
     "lint": "tsc --noEmit",
     "test": "tsc && node --test --experimental-strip-types --disable-warning=ExperimentalWarning test/*.test.ts"
   },
+  "dependencies": {
+    "@uiyzzi/pi-secret-kit": "^0.1.0"
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.74.0"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^0.79.4",
     "@earendil-works/pi-coding-agent": "^0.79.4",
+    "@earendil-works/pi-ai": "^0.79.4",
     "@earendil-works/pi-tui": "^0.79.4",
     "@types/node": "^20.10.0",
     "typescript": "^5.3.0"
@@ -31,19 +34,16 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/uiYzzi/pi_packages.git",
-    "directory": "packages/askpass"
+    "directory": "packages/asroot"
   },
   "author": "uiYzzi",
   "license": "MIT",
   "keywords": [
     "pi-package",
     "pi",
-    "secret",
+    "sudo",
+    "root",
     "askpass",
-    "password",
-    "prompt"
-  ],
-  "dependencies": {
-    "@uiyzzi/pi-secret-kit": "^0.1.0"
-  }
+    "secret"
+  ]
 }

@@ -14,8 +14,9 @@ export function buildGuidance(secrets: SecretDef[]): string {
     "Never echo, cat, print, or write a secret value anywhere.",
   ];
 
-  if (secrets.length > 0) {
-    lines.push(`Available: ${secrets.map((e) => `$${e.name}`).join(", ")}.`);
+  const usable = secrets.filter((e) => !e.ephemeral);
+  if (usable.length > 0) {
+    lines.push(`Available: ${usable.map((e) => `$${e.name}`).join(", ")}.`);
   }
 
   return lines.join("\n");

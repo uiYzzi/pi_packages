@@ -25,19 +25,16 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
           cache: npm
-          cache-dependency-path: packages/${{ steps.tag.outputs.package }}/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: upgrade npm (trusted publishing requires >= 11.5.1)
         run: npm install -g npm@latest
 
+      # npm workspace: install once at the root, then test/build/publish the package
       - run: npm ci
-        working-directory: packages/${{ steps.tag.outputs.package }}
 
-      - run: npm test
-        working-directory: packages/${{ steps.tag.outputs.package }}
+      - run: npm test -w packages/${{ steps.tag.outputs.package }}
 
-      - run: npm run build
-        working-directory: packages/${{ steps.tag.outputs.package }}
+      - run: npm run build -w packages/${{ steps.tag.outputs.package }}
 
-      - run: npm publish --access public
-        working-directory: packages/${{ steps.tag.outputs.package }}
+      - run: npm publish --access public -w packages/${{ steps.tag.outputs.package }}

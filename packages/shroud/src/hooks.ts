@@ -50,6 +50,11 @@ export function rescan(cwd: string, st: ShroudState): void {
     if (i >= 0) merged[i] = s;
     else merged.push(s);
   }
+  // Preserve redact-only runtime secrets (e.g. sudo passwords from asroot);
+  // they are not discoverable from env or files.
+  for (const s of st.secrets) {
+    if (s.ephemeral && !merged.some((m) => m.name === s.name)) merged.push(s);
+  }
 
   st.secrets = merged;
   st.redactor.refresh(st.secrets);
@@ -61,9 +66,19 @@ export function rescan(cwd: string, st: ShroudState): void {
  * Add a secret captured at runtime (e.g. pushed by askpass via the bridge).
  * Refreshes the redactor immediately — no rescan needed.
  */
-export function addRuntimeSecret(st: ShroudState, name: string, value: string): void {
+/**
+ * Add a secret captured at runtime (e.g. pushed by askpass/asroot via the bridge).
+ * Refreshes the redactor immediately — no rescan needed.
+ * Ephemeral secrets are redact-only: never exported to the shell env.
+ */
+export function addRuntimeSecret(
+  st: ShroudState,
+  name: string,
+  value: string,
+  opts?: { ephemeral?: boolean },
+): void {
   st.secrets = st.secrets.filter((s) => s.name !== name);
-  st.secrets.push({ name, value });
+  st.secrets.push({ name, value, ephemeral: opts?.ephemeral });
   st.redactor.refresh(st.secrets);
   exportSecrets(st.secrets, st.ownedNames, st.savedEnv);
 }
@@ -87,8 +102,10 @@ function exportSecrets(
   }
   ownedNames.clear();
 
-  // 2. Set new secrets, saving existing values first
+  // 2. Set new secrets, saving existing values first.
+  //    Ephemeral secrets (e.g. sudo passwords) are redact-only: never exported.
   for (const s of secrets) {
+    if (s.ephemeral) continue;
     // Save existing value before overwriting (if we haven't already)
     if (!savedEnv.has(s.name)) {
       savedEnv.set(s.name, process.env[s.name]);

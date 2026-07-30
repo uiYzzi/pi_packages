@@ -4,29 +4,34 @@
 
 ## 现有的包
 
-- [shroud](./packages/shroud/)：secret firewall。agent 能用 API key，但永远看不到值。
-- [askpass](./packages/askpass/)：masked TUI secret prompt。agent 要密钥时弹掩码输入框，值直接进 env，不进上下文。
+| 包 | 干什么 |
+|---|---|
+| [shroud](./packages/shroud/) | secret firewall。agent 能用你的 API key，看不到值 |
+| [askpass](./packages/askpass/) | 弹掩码输入框收密钥，值直接进 env |
+| [asroot](./packages/asroot/) | sudo 提权，密码走掩码输入框，agent 碰不到 |
+| [secret-kit](./packages/secret-kit/) | askpass 和 asroot 共用的组件库 |
 
 ## 装
 
 ```bash
 pi install npm:@uiyzzi/pi-shroud
+pi install npm:@uiyzzi/pi-askpass
+pi install npm:@uiyzzi/pi-asroot
 ```
 
 本地开发：
 
 ```bash
-pi install ./packages/shroud
 pi install ./packages/askpass
 ```
 
-`pi install` 会自动写入 `~/.pi/agent/settings.json`，不用手动改。
+`pi install` 会写进 `~/.pi/agent/settings.json`，不用手动改。
 
 ## 目录约定
 
 ```
 pi-packages/
-  README.md
+  package.json        npm workspace 根
   packages/
     <package>/
       README.md

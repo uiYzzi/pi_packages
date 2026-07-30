@@ -1,9 +1,9 @@
 /**
  * askpass — masked TUI secret prompt for pi.
  *
- * Inspired by kimi-asksecret/askpass.sh: the agent requests a secret,
- * the user types it into a masked input in pi's TUI, and the value goes
- * straight into the shell environment — never into the model's context.
+ * The agent requests a secret, the user types it into a masked input in
+ * pi's TUI, and the value goes straight into the shell environment —
+ * never into the model's context.
  *
  * Defense in depth:
  *  - tool result contains only a confirmation (never the value)

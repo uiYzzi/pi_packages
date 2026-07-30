@@ -43,10 +43,10 @@ export function getAskpassSecrets(): SecretDef[] {
 /** Expose shroud's redactor to other extensions (askpass pushes new captures here). */
 export function registerBridge(st: ShroudState): void {
   (globalThis as Record<symbol, unknown>)[SHROUD_SYMBOL] = {
-    addSecret(name: unknown, value: unknown): void {
+    addSecret(name: unknown, value: unknown, opts?: { ephemeral?: boolean }): void {
       if (typeof name !== "string" || typeof value !== "string") return;
       if (name.length === 0 || value.length === 0) return;
-      addRuntimeSecret(st, name, value);
+      addRuntimeSecret(st, name, value, opts);
     },
   };
 }

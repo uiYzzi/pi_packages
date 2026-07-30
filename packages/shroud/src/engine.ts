@@ -18,6 +18,11 @@ import { escapeRegex, sanitizeName } from "./util.js";
 export interface SecretDef {
   name: string;
   value: string;
+  /**
+   * Redact-only secret (e.g. a sudo password pushed by asroot).
+   * NOT exported to the shell env and NOT listed as a usable var.
+   */
+  ephemeral?: boolean;
 }
 
 export interface CustomPatternDef {
@@ -77,6 +82,10 @@ const BUILTIN_PATTERNS: PatternRule[] = [
 
 function toPlaceholder(secretName: string, shellVar: string): string {
   return `«SECRET ${secretName} redacted — the real value is live in your shell env; read it in bash as "$${shellVar}"»`;
+}
+
+function toEphemeralPlaceholder(secretName: string): string {
+  return `«SECRET ${secretName} redacted»`;
 }
 
 // ── Compilation ────────────────────────────────────────────────────────────
@@ -150,7 +159,12 @@ export function createRedactor(
     const values: ValueEntry[] = [];
     for (const s of secrets) {
       if (s.value.length >= 8) {
-        values.push({ value: s.value, placeholder: toPlaceholder(s.name, s.name) });
+        values.push({
+          value: s.value,
+          placeholder: s.ephemeral
+            ? toEphemeralPlaceholder(s.name)
+            : toPlaceholder(s.name, s.name),
+        });
       }
     }
     return {

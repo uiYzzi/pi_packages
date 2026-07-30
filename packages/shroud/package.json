@@ -1,6 +1,6 @@
 {
   "name": "@uiyzzi/pi-shroud",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "description": "High-performance secret firewall for pi — secrets usable as shell vars, never visible to models",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

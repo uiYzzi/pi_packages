@@ -3,9 +3,9 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { promptSecret } from "./dialog.js";
-import { isValidName, type AskpassState } from "./state.js";
-import { notifyShroud } from "./bridge.js";
+import { promptSecret, isValidName } from "@uiyzzi/pi-secret-kit";
+import { type AskpassState } from "./state.js";
+import { notifyShroud } from "@uiyzzi/pi-secret-kit";
 
 export function registerCommands(pi: ExtensionAPI, st: AskpassState): void {
   pi.registerCommand("askpass", {

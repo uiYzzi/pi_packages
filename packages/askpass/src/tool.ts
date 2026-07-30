@@ -9,15 +9,14 @@ import { Type, type Static } from "typebox";
 import { execFile } from "node:child_process";
 import { mkdir, appendFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { promptSecret } from "./dialog.js";
 import {
+  promptSecret,
   deriveName,
   isValidName,
   placeholderFor,
-  scrubText,
-  type AskpassState,
-} from "./state.js";
-import { notifyShroud } from "./bridge.js";
+} from "@uiyzzi/pi-secret-kit";
+import { scrubText, type AskpassState } from "./state.js";
+import { notifyShroud } from "@uiyzzi/pi-secret-kit";
 
 const parameters = Type.Object({
   description: Type.String({
