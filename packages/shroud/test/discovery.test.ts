@@ -170,12 +170,16 @@ test("env vars override dotenv with same name", () => {
 test("entries are sorted longest-value-first", () => {
   withEnvFile(
     [
-      "A=abcdefghijklmnopqrstuvwxyz1234567890",
-      "B=abcdefghijklmnop",
+      "LONG_TOKEN=abcdefghijklmnopqrstuvwxyz1234567890",
+      "SHORT_SECRET=abcdefghijklmnop",
     ],
     (dir) => {
       const entries = discoverSecrets(dir);
-      assert.ok(entries[0]!.value.length >= entries[1]!.value.length);
+      const longIdx = entries.findIndex((e) => e.name === "LONG_TOKEN");
+      const shortIdx = entries.findIndex((e) => e.name === "SHORT_SECRET");
+      assert.ok(longIdx >= 0, "LONG_TOKEN should be discovered");
+      assert.ok(shortIdx >= 0, "SHORT_SECRET should be discovered");
+      assert.ok(longIdx < shortIdx, "longer value should sort before shorter");
     },
   );
 });

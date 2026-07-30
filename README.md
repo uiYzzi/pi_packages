@@ -9,11 +9,13 @@
 ## 装
 
 ```bash
-# 本地安装
-pi install /Volumes/Data/git/pi_packages/packages/shroud
+pi install npm:@uiyzzi/pi-shroud
+```
 
-# 试跑
-pi -e /Volumes/Data/git/pi_packages/packages/shroud
+本地开发：
+
+```bash
+pi install ./packages/shroud
 ```
 
 `pi install` 会自动写入 `~/.pi/agent/settings.json`，不用手动改。

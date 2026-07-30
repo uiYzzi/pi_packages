@@ -24,7 +24,7 @@ sk-abc123...  →  «SECRET OPENAI_API_KEY — read as "$OPENAI_API_KEY"»
 ## 装
 
 ```bash
-pi install /Volumes/Data/git/pi_packages/packages/shroud
+pi install npm:@uiyzzi/pi-shroud
 ```
 
 ## 命令
