@@ -18,14 +18,16 @@ test("scrubs exact values with placeholder", () => {
 test("skips short values and misses", () => {
   assert.equal(scrubValues("pin 123", [{ name: "PIN", value: "123" }]), undefined);
   assert.equal(scrubValues("nothing", [{ name: "K", value: "abcdef" }]), undefined);
+  // 7 chars: below the 8-char floor, must not scrub
+  assert.equal(scrubValues("short 1234567 here", [{ name: "S7", value: "1234567" }]), undefined);
 });
 
 test("scrubs multiple occurrences and multiple secrets", () => {
-  const out = scrubValues("aaaa bbbb aaaa", [
-    { name: "A", value: "aaaa" },
-    { name: "B", value: "bbbb" },
+  const out = scrubValues("aaaaaaaa bbbbbbbb aaaaaaaa", [
+    { name: "A", value: "aaaaaaaa" },
+    { name: "B", value: "bbbbbbbb" },
   ]);
   assert.equal(out?.hits, 2);
-  assert.ok(!out?.text.includes("aaaa"));
-  assert.ok(!out?.text.includes("bbbb"));
+  assert.ok(!out?.text.includes("aaaaaaaa"));
+  assert.ok(!out?.text.includes("bbbbbbbb"));
 });

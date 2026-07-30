@@ -28,10 +28,18 @@ const SENSITIVE_NAME =
 const NEVER_SENSITIVE =
   /^(PATH|HOME|SHELL|PWD|OLDPWD|LANG|LC_|TERM|USER|LOGNAME|HOSTNAME|TMPDIR|EDITOR|PAGER|NODE_ENV|NODE_OPTIONS|npm_|PNPM_|COLORTERM|SHLVL|SSH_AUTH_SOCK|SSH_AGENT_PID|__MISE|MISE_|WARP_|XPC_|__CF|SECURITYSESSIONID|TERM_SESSION_ID|_$)/;
 
+/**
+ * Pointer-style variables: the value is a file path or config location,
+ * not the secret itself (e.g. GOOGLE_APPLICATION_CREDENTIALS=/path/key.json,
+ * KUBECONFIG, AWS_SHARED_CREDENTIALS_FILE). Redacting paths mangles output
+ * without protecting anything — the file contents are handled separately.
+ */
+const POINTER_NAME = /(_FILE|_FILES|_PATH|_DIR|_HOME|_LOCATION)$/i;
+
 const SESSION_LIKE_NAME = /(SESSION|SOCK|UUID|_PID)$/i;
 
 const TRIVIAL_VALUE =
-  /^(true|false|null|undefined|none|localhost|0|1|3000|8080|development|production|staging|test)$/i;
+  /^(true|false|null|undefined|none|nil|localhost|0|1|3000|8080|development|production|staging|test|testing|changeme|change[_-]?me|password|password1|password123|passw0rd|letmein|qwerty|abc123|example|sample|dummy|placeholder|redacted|secret|token|api[_-]?key|your[_-]?.*|xxx+|<.*>|\$\{.*\}|\.*)$/i;
 
 const MIN_VALUE_LENGTH = 8;
 
@@ -48,6 +56,7 @@ const DOTENV_LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/;
 
 function isSensitiveValue(name: string, value: string): boolean {
   if (NEVER_SENSITIVE.test(name)) return false;
+  if (POINTER_NAME.test(name)) return false;
   if (SESSION_LIKE_NAME.test(name)) return false;
   if (!value || value.length < MIN_VALUE_LENGTH) return false;
   if (TRIVIAL_VALUE.test(value)) return false;

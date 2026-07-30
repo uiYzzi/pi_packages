@@ -1,6 +1,6 @@
 {
   "name": "@uiyzzi/pi-secret-kit",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Shared masked-input TUI components and secret-handling utilities for pi extensions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

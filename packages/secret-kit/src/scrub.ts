@@ -19,14 +19,15 @@ export interface ScrubResult {
 
 /**
  * Replace exact occurrences of entry values with placeholders.
- * Values shorter than 4 chars are skipped (common-substring false positives).
+ * Values shorter than 8 chars are skipped (common-substring false positives;
+ * aligned with shroud engine's MIN_VALUE_LENGTH).
  * Returns undefined when nothing matched (cheap path).
  */
 export function scrubValues(text: string, entries: ScrubEntry[]): ScrubResult | undefined {
   let out = text;
   let hits = 0;
   for (const s of entries) {
-    if (s.value.length < 4) continue;
+    if (s.value.length < 8) continue;
     if (out.includes(s.value)) {
       out = out.split(s.value).join(placeholderFor(s.name));
       hits++;

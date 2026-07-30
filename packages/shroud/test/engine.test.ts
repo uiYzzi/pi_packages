@@ -100,6 +100,31 @@ test("catches AWS access key pattern", () => {
   assert.ok(out.text.includes('"$SECRET_AWS_ACCESS_KEY"'));
 });
 
+test("catches AWS secret key pattern", () => {
+  const r = createRedactor([]);
+  // Realistic shape: 40 chars, mixed case + digits, no '/' (real keys may
+  // contain '/', but the pattern rejects slashes — literal discovery covers
+  // the user's own keys)
+  const key = "Ab3dEf7gHj2kLm5nPq8rSt1vWx4yZa6bCd9eFg0h";
+  assert.equal(key.length, 40);
+  const out = r.redact(`aws_secret_access_key = ${key}`);
+  assert.ok(!out.text.includes(key));
+  // Redact-only: no shell-var hint in the placeholder
+  assert.ok(!out.text.includes('"$SECRET_AWS_SECRET"'));
+  assert.equal(out.captured[0]!.exportable, false);
+});
+
+test("AWS secret pattern does not eat 40-char file paths", () => {
+  const r = createRedactor([]);
+  // Regression: this lowercase path prefix is exactly 40 chars of [A-Za-z0-9/]
+  // and matched the bare AWS secret shape, producing "<redacted>.py".
+  // 40 chars: "backend/src/qingtian/api/middleware/auth" (7+1+3+1+8+1+3+1+10+1+4)
+  const path = "backend/src/qing" + "tian/api/middleware" + "/auth" + ".py";
+  const out = r.redact(`file_path: "${path}"`);
+  assert.equal(out.hits, 0);
+  assert.ok(out.text.includes(path));
+});
+
 test("catches OpenAI key pattern", () => {
   const r = createRedactor([]);
   const out = r.redact("key: sk-proj-abcdefghijklmnopqrstuvwxyz123456 leaked");
@@ -168,14 +193,17 @@ test("catches connection string with credentials", () => {
   const r = createRedactor([]);
   const out = r.redact("uri=postgres://admin:secretpass@db.example.com:5432/app");
   assert.ok(!out.text.includes("secretpass"), "password should be redacted");
-  assert.ok(out.text.includes('"$SECRET_CONNECTION_STRING"'));
+  // Redact-only: placeholder must not promise a shell var
+  assert.ok(!out.text.includes('"$SECRET_CONNECTION_STRING"'));
+  assert.equal(out.captured[0]!.exportable, false);
 });
 
 test("catches mongodb connection string", () => {
   const r = createRedactor([]);
-  const out = r.redact("mongodb://root:hunter2@mongo.example.com:27017/admin");
-  assert.ok(!out.text.includes("hunter2"));
-  assert.ok(out.text.includes('"$SECRET_CONNECTION_STRING"'));
+  const out = r.redact("mongodb://appuser:Tq9Wm2Xv7Lp4@mongo.example.com:27017/admin");
+  assert.ok(!out.text.includes("Tq9Wm2Xv7Lp4"));
+  assert.ok(!out.text.includes('"$SECRET_CONNECTION_STRING"'));
+  assert.equal(out.captured[0]!.exportable, false);
 });
 
 test("does not redact connection string without credentials", () => {
@@ -276,9 +304,73 @@ test("value exactly 8 chars is redacted", () => {
   assert.equal(out.hits, 1);
 });
 
+test("stale capture dropped when rule starts rejecting it", () => {
+  const r = createRedactor([], [{ name: "ACME", regex: "acme-[0-9a-z]{8}" }]);
+  const tok = "acme-abc123xy";
+  const out1 = r.redact(`t: ${tok}`);
+  assert.equal(out1.hits, 1);
+  assert.equal(r.capturedNames().length, 1);
+  // Rule removed → its captures must be dropped on refresh
+  r.refreshPatterns([]);
+  const out2 = r.redact(`t: ${tok}`);
+  assert.equal(out2.hits, 0, "capture must be dropped once its rule is gone");
+  assert.equal(r.capturedNames().length, 0);
+});
+
+test("capture survives refresh when rule still accepts it", () => {
+  const r = createRedactor([]);
+  // three base64url segments joined so no JWT-shaped literal appears in source
+  const jwt = "eyJ" + "hbGciOiJIUzI1NiJ9" + "." + "eyJ1c2VyIjoix" + "." + "SflKxwRJSMeKKF2QT4";
+  r.redact(jwt);
+  assert.equal(r.capturedNames().length, 1);
+  r.refresh([]);
+  assert.equal(r.capturedNames().length, 1);
+  // Recurrence still redacted with the same placeholder
+  const out = r.redact(jwt);
+  assert.ok(!out.text.includes(jwt));
+});
+
 test("value exactly 7 chars is NOT redacted", () => {
   const r = createRedactor([{ name: "K7", value: "1234567" }]);
   const out = r.redact("value: 1234567 end");
   assert.ok(out.text.includes("1234567"));
   assert.equal(out.hits, 0);
+});
+
+test("connection string with placeholder creds is NOT captured", () => {
+  const r = createRedactor([]);
+  const pg = "postgres" + ":/" + "/user:password" + "@db.example.com:5432/app";
+  const http = "http" + ":/" + "/user:pass" + "@10.0.0.1/";
+  const out = r.redact(`docs: ${pg} and ${http}`);
+  assert.equal(out.hits, 0);
+  assert.ok(out.text.includes(pg));
+  assert.ok(out.text.includes(http));
+});
+test("connection string with real-looking creds is redact-only (no env export)", () => {
+  const r = createRedactor([]);
+  const out = r.redact("DATABASE_URL=postgres://svc_app:X9k2mQ7pL4wR@db.internal:5432/prod");
+  assert.equal(out.hits, 1);
+  assert.ok(!out.text.includes("X9k2mQ7pL4wR"));
+  // Redact-only: placeholder must NOT promise a shell var
+  assert.ok(!out.text.includes('"$SECRET_'));
+  assert.equal(out.captured.length, 1);
+  assert.equal(out.captured[0]!.exportable, false);
+});
+
+test("AWS secret pattern rejects paths containing slashes", () => {
+  const r = createRedactor([]);
+  // Exactly 40 chars of [A-Za-z0-9/], mixed case + digit — but contains
+  // '/' → path, not a key
+  const path = "/Abc1/Abc1/Abc1/Abc1/Abc1/Abc1/Abc1/Abc1";
+  const out = r.redact(`file: ${path}`);
+  assert.equal(out.hits, 0);
+});
+
+test("AWS secret capture is redact-only (no env export)", () => {
+  const r = createRedactor([]);
+  const key = "Ab3dEf7gHj2kLm5nPq8rSt1vWx4yZa6bCd9eFg0h";
+  const out = r.redact(`key: ${key}`);
+  assert.equal(out.hits, 1);
+  assert.ok(!out.text.includes('"$SECRET_AWS_SECRET"'));
+  assert.equal(out.captured[0]!.exportable, false);
 });

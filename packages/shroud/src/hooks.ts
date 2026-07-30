@@ -59,7 +59,10 @@ export function rescan(cwd: string, st: ShroudState): void {
   st.secrets = merged;
   st.redactor.refresh(st.secrets);
   st.redactor.refreshPatterns(config.patterns);
-  exportSecrets(st.secrets, st.ownedNames, st.savedEnv);
+  // Pattern-captured secrets live in the redactor, not in `secrets` —
+  // their env vars must survive rescan, else placeholders like
+  // «... read it in bash as "$SECRET_JWT"» become dangling references.
+  exportSecrets(st.secrets, st.ownedNames, st.savedEnv, new Set(st.redactor.capturedNames()));
 }
 
 /**
@@ -87,9 +90,12 @@ function exportSecrets(
   secrets: SecretDef[],
   ownedNames: Set<string>,
   savedEnv: Map<string, string | undefined>,
+  keepNames: Set<string> = new Set(),
 ): void {
-  // 1. Restore previously saved env vars that are no longer in secrets
+  // 1. Restore previously saved env vars that are no longer in secrets.
+  //    Names in keepNames (pattern-captured secrets) are preserved.
   for (const name of ownedNames) {
+    if (keepNames.has(name)) continue;
     if (!secrets.some((s) => s.name === name)) {
       const saved = savedEnv.get(name);
       if (saved === undefined) {
@@ -113,6 +119,10 @@ function exportSecrets(
     process.env[s.name] = s.value;
     ownedNames.add(s.name);
   }
+  // 3. Preserved captured names stay owned (not restored/deleted above).
+  for (const name of keepNames) {
+    if (name in process.env) ownedNames.add(name);
+  }
 }
 
 function exportCaptured(
@@ -121,6 +131,8 @@ function exportCaptured(
   savedEnv: Map<string, string | undefined>,
 ): void {
   for (const c of captured) {
+    // Redact-only captures (low-confidence patterns): never touch the env.
+    if (c.exportable === false) continue;
     let finalName = c.name;
 
     // Collision: name already in process.env but we didn't put it there
@@ -204,13 +216,13 @@ function redactValue(value: unknown, redactor: Redactor, stats: ShroudState["sta
           blockChanged = true;
         }
       }
-      if (b.type === "toolCall" && b.arguments && typeof b.arguments === "object") {
-        const redacted = deepRedactArgs(b.arguments as Record<string, unknown>, redactor, stats);
-        if (redacted !== b.arguments) {
-          out.arguments = redacted;
-          blockChanged = true;
-        }
-      }
+      // NOTE: toolCall arguments are deliberately NOT redacted here.
+      // The model generated those args itself — redaction provides zero
+      // secrecy benefit, but pi drains context-hook transforms into the
+      // session before tool execution, so mutating arguments corrupts the
+      // very operations the agent performs (write/edit/bash payloads with
+      // secret-shaped strings, e.g. a 40-char path, would land on disk
+      // as «SECRET ...» placeholders).
 
       if (blockChanged) changed = true;
       return blockChanged ? out : item;
@@ -219,45 +231,6 @@ function redactValue(value: unknown, redactor: Redactor, stats: ShroudState["sta
   }
 
   return { result: value, captured: [] };
-}
-
-function deepRedactArgs(
-  args: Record<string, unknown>,
-  redactor: Redactor,
-  stats: ShroudState["stats"],
-): Record<string, unknown> {
-  let changed = false;
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(args)) {
-    if (typeof v === "string") {
-      const r = redactor.redact(v);
-      if (r.hits > 0) {
-        stats.redactedHits += r.hits;
-        out[k] = r.text;
-        changed = true;
-      } else {
-        out[k] = v;
-      }
-    } else if (Array.isArray(v)) {
-      let arrChanged = false;
-      const arr = v.map((item) => {
-        if (typeof item === "string") {
-          const r = redactor.redact(item);
-          if (r.hits > 0) { stats.redactedHits += r.hits; arrChanged = true; return r.text; }
-        }
-        return item;
-      });
-      out[k] = arrChanged ? arr : v;
-      if (arrChanged) changed = true;
-    } else if (v && typeof v === "object") {
-      const inner = deepRedactArgs(v as Record<string, unknown>, redactor, stats);
-      out[k] = inner !== v ? inner : v;
-      if (inner !== v) changed = true;
-    } else {
-      out[k] = v;
-    }
-  }
-  return changed ? out : args;
 }
 
 // ── Hook registrations ─────────────────────────────────────────────────────

@@ -35,6 +35,8 @@ export interface CapturedSecret {
   name: string;
   placeholder: string;
   value: string;
+  /** False = redact-only; do not export to shell env. */
+  exportable?: boolean;
 }
 
 export interface RedactionResult {
@@ -48,12 +50,62 @@ export interface RedactionResult {
 interface PatternRule {
   regex: RegExp;
   name: string;
+  /** Optional post-match filter; return false to reject a false positive. */
+  validate?: (match: string) => boolean;
+  /**
+   * If false, captured values are redact-only (ephemeral placeholder, no
+   * shell-env export). Use for low-confidence shapes where the captured
+   * value may be a false positive — exporting it would pollute the env
+   * and the bash-hint placeholder would be a lie.
+   */
+  exportable?: boolean;
+}
+
+/**
+ * Real AWS secret access keys are 40-char base64-ish and (statistically
+ * ~99.9%) contain at least one digit, one uppercase, and one lowercase
+ * letter. Bare lowercase strings like file paths (e.g.
+ * "backend/src/qingtian/api/middleware/auth", exactly 40 chars of
+ * [A-Za-z0-9/]) must NOT match.
+ * Slashes are also rejected: paths are the dominant false-positive shape,
+ * and the user's own real keys are already covered by literal discovery
+ * (env / ~/.aws/credentials), so the pattern only hunts unknown keys.
+ */
+function looksLikeAwsSecret(match: string): boolean {
+  if (match.includes("/") || match.includes("+")) return false;
+  return /[0-9]/.test(match) && /[A-Z]/.test(match) && /[a-z]/.test(match);
+}
+
+/**
+ * Placeholder credentials common in docs/examples. If the userinfo is one
+ * of these shapes, the URL is documentation, not a leaked secret.
+ * e.g. postgres://user:pass@host, https://admin:admin@host
+ */
+const PLACEHOLDER_USER = /^(?:user(?:name)?|admin|test|demo|example|sample|foo|bar|changeme|change_me|root|guest|scott|tiger|your[_-]?\w*|\$\{[^}]*\}|<[^>]*>|\.*|x+)$/i;
+const PLACEHOLDER_PASS = /^(?:pass(?:word)?|passwd|admin|test|demo|example|sample|foo|bar|changeme|change_me|secret|root|guest|tiger|hunter2|your[_-]?\w*|\$\{[^}]*\}|<[^>]*>|\.*|x+)$/i;
+
+function looksLikeConnectionString(match: string): boolean {
+  // match shape: scheme://userinfo@  (userinfo = user:pass)
+  const userinfo = match.slice(match.indexOf("://") + 3, match.lastIndexOf("@"));
+  const colon = userinfo.indexOf(":");
+  if (colon < 0) return false;
+  const user = userinfo.slice(0, colon);
+  const pass = userinfo.slice(colon + 1);
+  // Docs/examples use placeholder creds — not a leaked secret.
+  if (PLACEHOLDER_USER.test(user) && PLACEHOLDER_PASS.test(pass)) return false;
+  if (PLACEHOLDER_PASS.test(pass)) return false;
+  return true;
 }
 
 const BUILTIN_PATTERNS: PatternRule[] = [
   // ── Vendor API keys ──────────────────────────────────────────────────
   { regex: /\bAKIA[0-9A-Z]{16}\b/g, name: "AWS_ACCESS_KEY" },
-  { regex: /\b(?<![A-Za-z0-9/+])[A-Za-z0-9/+]{40}(?![A-Za-z0-9/+])\b/g, name: "AWS_SECRET" },
+  {
+    regex: /\b(?<![A-Za-z0-9/+])[A-Za-z0-9/+]{40}(?![A-Za-z0-9/+])\b/g,
+    name: "AWS_SECRET",
+    validate: looksLikeAwsSecret,
+    exportable: false,
+  },
   { regex: /\bsk-[A-Za-z0-9_-]{20,}\b/g, name: "OPENAI_KEY" },
   { regex: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/g, name: "GITHUB_TOKEN" },
   { regex: /\bgithub_pat_[A-Za-z0-9_]{36,}\b/g, name: "GITHUB_PAT" },
@@ -75,6 +127,8 @@ const BUILTIN_PATTERNS: PatternRule[] = [
   {
     regex: /\b(?:postgres|mysql|mongodb|redis|https?|amqp|mqtt|jdbc):\/\/[^:@\s]+:[^@\s]+@/g,
     name: "CONNECTION_STRING",
+    validate: looksLikeConnectionString,
+    exportable: false,
   },
 ];
 
@@ -144,10 +198,13 @@ export function createRedactor(
   initial: SecretDef[] = [],
   customPatterns: CustomPatternDef[] = [],
 ): Redactor {
-  // Mutable capture state (accumulated across redactions)
-  let capturedValues = new Map<string, { name: string; placeholder: string }>();
+  // Mutable capture state (accumulated across redactions).
+  // patternName is kept so refresh() can re-validate stale captures.
+  let capturedValues = new Map<
+    string,
+    { name: string; placeholder: string; patternName: string }
+  >();
   let nameCounters = new Map<string, number>();
-  let nextSuffix = new Map<string, number>();
 
   // Reserve names from initial secrets so pattern-captured names don't collide
   for (const s of initial) {
@@ -179,7 +236,11 @@ export function createRedactor(
 
   // ── Name allocation for captured secrets ───────────────────────────────
 
-  function allocatePlaceholder(baseName: string, _value: string): { name: string; placeholder: string } {
+  function allocatePlaceholder(
+    baseName: string,
+    _value: string,
+    exportable = true,
+  ): { name: string; placeholder: string } {
     const sanitized = sanitizeName(baseName);
     // Find next free name, skipping both previously captured names and reserved names
     let seq = 0;
@@ -187,10 +248,27 @@ export function createRedactor(
     do {
       name = seq === 0 ? `SECRET_${sanitized}` : `SECRET_${sanitized}_${seq + 1}`;
       seq++;
-    } while (nameCounters.has(name) || nextSuffix.has(name));
-    nextSuffix.set(sanitized, seq);
-    const placeholder = toPlaceholder(sanitized, name);
+    } while (nameCounters.has(name));
+    const placeholder = exportable
+      ? toPlaceholder(sanitized, name)
+      : toEphemeralPlaceholder(sanitized);
     return { name, placeholder };
+  }
+
+  /**
+   * Drop captures whose originating rule now rejects the value (e.g. a
+   * false positive captured before a validate filter was added). Kept
+   * captures survive refresh so placeholders already present in the
+   * conversation stay stable.
+   */
+  function revalidateCaptures(): void {
+    for (const [value, entry] of capturedValues) {
+      const rule = state.patternRules.find((r) => r.name === entry.patternName);
+      // Rule gone (custom pattern removed) or now rejects the value → drop
+      if (!rule || (rule.validate && !rule.validate(value))) {
+        capturedValues.delete(value);
+      }
+    }
   }
 
   // ── Redaction ──────────────────────────────────────────────────────────
@@ -211,19 +289,21 @@ export function createRedactor(
     }
 
     // Phase 2: Pattern-based detection (token shapes)
-    for (const { regex, name: patternName } of state.patternRules) {
+    for (const { regex, name: patternName, validate, exportable } of state.patternRules) {
       regex.lastIndex = 0;
       out = out.replace(regex, (match) => {
+        // Post-match filter: reject false positives (e.g. 40-char paths)
+        if (validate && !validate(match)) return match;
         // Check if already captured (same value seen before)
         const existing = capturedValues.get(match);
         if (existing) {
           hits++;
           return existing.placeholder;
         }
-        const { name, placeholder } = allocatePlaceholder(patternName, match);
-        capturedValues.set(match, { name, placeholder });
+        const { name, placeholder } = allocatePlaceholder(patternName, match, exportable !== false);
+        capturedValues.set(match, { name, placeholder, patternName });
         nameCounters.set(name, 1);
-        captured.push({ name, placeholder, value: match });
+        captured.push({ name, placeholder, value: match, exportable: exportable !== false });
         hits++;
         return placeholder;
       });
@@ -238,6 +318,9 @@ export function createRedactor(
     redact,
 
     refresh(secrets: SecretDef[]): void {
+      state = buildState(secrets, state.customPatterns);
+      // Drop stale captures the (possibly updated) rules no longer accept
+      revalidateCaptures();
       // Rebuild name reservation from secrets
       const nc = new Map<string, number>();
       for (const s of secrets) {
@@ -248,7 +331,6 @@ export function createRedactor(
         nc.set(entry.name, 1);
       }
       nameCounters = nc;
-      state = buildState(secrets, state.customPatterns);
     },
 
     refreshPatterns(patterns: CustomPatternDef[]): void {
@@ -257,10 +339,16 @@ export function createRedactor(
         patternRules: [...BUILTIN_PATTERNS, ...compileCustomPatterns(patterns)],
         customPatterns: patterns,
       };
+      revalidateCaptures();
     },
 
     knownPlaceholders(): string[] {
       return Array.from(capturedValues.values()).map((v) => v.placeholder);
+    },
+
+    /** Names of pattern-captured secrets (for env preservation on rescan). */
+    capturedNames(): string[] {
+      return Array.from(capturedValues.values()).map((v) => v.name);
     },
   };
 }
@@ -270,4 +358,5 @@ export interface Redactor {
   refresh(secrets: SecretDef[]): void;
   refreshPatterns(patterns: CustomPatternDef[]): void;
   knownPlaceholders(): string[];
+  capturedNames(): string[];
 }
