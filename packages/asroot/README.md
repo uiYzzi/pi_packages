@@ -1,18 +1,23 @@
 # asroot
 
-pi 的 sudo。agent 要 root 权限时调 `asroot` 工具，你在 TUI 掩码输入框里输密码，密码全程碰不到模型。
+pi 的透明 sudo。agent 在 bash 里直接写 `sudo`，密码弹窗和喂密码全在后台完成，agent 从头到尾碰不到密码。
 
 ## 它做什么
 
 ```
-agent: 调 asroot { command: "diskutil list" }
-你:    🔒 Administrator access required
-       Enter password for you to run: diskutil list
+agent: bash → sudo diskutil list
+hook:  拦到 sudo → 弹掩码输入框（首次，或缓存过期后）
+你:    🔒 Root access requested
+       you · sudo diskutil list
        > ••••••••
-agent: 拿到命令输出，密码它从没见过
+hook:  mkfifo 一次性管道 → 改写命令加 PATH shim → 放行
+bash:  shim 版 sudo 从管道读到密码，命令正常跑
+agent: 只看到输出。密码不在命令文本里，不在任何上下文中
 ```
 
-密码走 stdin 喂给 `sudo -S -k -v` 做校验，之后靠 sudo 自己的时间戳缓存（macOS 默认 5 分钟）跑真正的命令。密码不进 argv（`ps` 看不到），不进 env（子进程继承不到），不落盘。
+密码在扩展内存里缓存 5 分钟，和 sudo 的 `timestamp_timeout` 一个习惯。过期或会话结束就消失，下次 sudo 重新弹窗。弹窗副标题显示当前要执行的命令。
+
+> 注意：缓存是扩展自己实现的。sudo 原生时间戳按 tty 记账，pi spawn 的进程没有 tty，指望不上。
 
 ## 装
 
@@ -22,38 +27,30 @@ pi install npm:@uiyzzi/pi-asroot
 
 改了代码就 `npm run build`，再 `/reload`。
 
-## 工具：asroot
+## 密码的旅程
 
-agent 可调。参数：
+弹窗 → `sudo -S -k -v` 校验 → 内存缓存 5 分钟 → 每次 sudo 经 fifo 喂给 shim。全程不进 argv（`ps` 看不到），不进 env（子进程继承不到），不落盘，不进 session 文件。
 
-| 参数 | 必填 | 作用 |
-|---|---|---|
-| `command` | ✓ | 要以 root 跑的 shell 命令 |
-| `timeout` | | 超时秒数，默认 60，上限 600 |
+泄漏兜底：缓存期间做了精确清洗，密码出现在你的输入或工具输出里就换成占位符。装了 shroud 时以 ephemeral 方式同步，全通道打码但不导出 env。
 
-行为：sudo 时间戳还有效就直接跑。过期了弹掩码输入框，密码校验通过再跑。你按 Esc 或密码错，工具报错，agent 可以重试。
+## agent 看到的规矩
 
-## 命令
+每轮 system prompt 注入三行：sudo 直接在 bash 里用，密码会透明喂入；别问密码，别读，别 echo。
 
-`/asroot <command...>`：你自己手动跑 root 命令，输出截断显示在通知里
+## 无 TUI 模式
 
-## 防护
-
-- bash 工具里的 `sudo` 一律 block，理由里指明走 `asroot`。非交互 shell 里 sudo 本来也跑不动，这条是把 agent 往正路上引。
-- 密码留在扩展内存里做精确清洗。它一旦漏进你的输入或任何工具输出，换成占位符。
-- 装了 shroud 时，密码以 ephemeral 方式推进它的 redactor：全通道打码，但不导出 env，不列进可用变量，占位符也不带 bash 提示。普通密钥（askpass 那些）agent 还能用 `$NAME` 引用，sudo 密码连这个口子都没有。
+弹不了窗（`pi -p`、rpc）时，带 sudo 的 bash 调用被 block，理由里说明需要交互终端。自己在终端先跑别的方案。
 
 ## 布局
 
 ```
 src/
-  index.ts    入口
-  tool.ts     asroot 工具
-  auth.ts     时间戳检查 + 掩码弹窗 + 密码校验
+  index.ts    入口，session 结束时清缓存
+  hooks.ts    提示词注入、sudo 拦截改写、泄漏清洗
+  auth.ts     缓存检查 + 掩码弹窗 + 密码校验
+  shim.ts     PATH shim 和一次性 fifo
   sudo.ts     sudo 进程封装（stdin 喂密码）
-  hooks.ts    提示词注入、sudo 拦截、泄漏清洗
-  commands.ts /asroot
-  state.ts    会话状态和清洗计数
+  state.ts    会话状态、5 分钟缓存、清洗
 ```
 
 掩码输入框来自 [secret-kit](../secret-kit/)，和 [askpass](../askpass/) 共用一套。

@@ -1,32 +1,47 @@
 /**
  * Session state for asroot.
  *
- * The sudo password lives ONLY here (for leak scrubbing) and in sudo's
- * own timestamp cache. It is never exported to the env, never written
- * to disk, never returned in tool results.
+ * The sudo password is cached in memory for CACHE_MS (mirroring sudo's
+ * familiar 5-minute timestamp), then dropped. While cached it is also
+ * used for exact-match leak scrubbing. Never on disk, never in env,
+ * never in session files.
  */
 
 import { scrubValues } from "@uiyzzi/pi-secret-kit";
 
 export const PASSWORD_NAME = "SUDO_PASSWORD";
 
+/** Mirrors sudo's default timestamp_timeout. */
+export const CACHE_MS = 5 * 60 * 1000;
+
+export interface CachedPassword {
+  value: string;
+  expiresAt: number;
+}
+
 export interface AsrootState {
-  /** The current user's sudo password, kept for exact-match scrubbing. */
-  password: string | null;
+  cached: CachedPassword | null;
   stats: { prompted: number; runs: number; scrubbed: number; blocked: number };
 }
 
 export function createState(): AsrootState {
   return {
-    password: null,
+    cached: null,
     stats: { prompted: 0, runs: 0, scrubbed: 0, blocked: 0 },
   };
 }
 
+/** Fresh cached password, or null when missing/expired. */
+export function freshPassword(st: AsrootState): string | null {
+  if (st.cached && Date.now() < st.cached.expiresAt) return st.cached.value;
+  st.cached = null;
+  return null;
+}
+
 /** Exact-match scrub of the sudo password from a text channel. */
 export function scrubText(text: string, st: AsrootState): string | undefined {
-  if (!st.password) return undefined;
-  const r = scrubValues(text, [{ name: PASSWORD_NAME, value: st.password }]);
+  if (!st.cached) return undefined;
+  const r = scrubValues(text, [{ name: PASSWORD_NAME, value: st.cached.value }]);
   if (!r) return undefined;
   st.stats.scrubbed += r.hits;
   return r.text;

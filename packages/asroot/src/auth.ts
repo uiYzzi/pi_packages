@@ -1,25 +1,32 @@
 /**
- * Shared core: make sure we have sudo rights, prompting the user via the
- * masked TUI input when sudo's timestamp cache is cold.
+ * Password supply: reuse the in-memory cache while fresh (CACHE_MS,
+ * mirroring sudo's timestamp_timeout), otherwise prompt the user via the
+ * masked TUI input, showing the exact command about to run.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { promptSecret, notifyShroud } from "@uiyzzi/pi-secret-kit";
-import { sudoCached, validatePassword } from "./sudo.js";
-import { PASSWORD_NAME, type AsrootState } from "./state.js";
+import { validatePassword } from "./sudo.js";
+import {
+  CACHE_MS,
+  PASSWORD_NAME,
+  freshPassword,
+  type AsrootState,
+} from "./state.js";
 
-const MAX_CMD_PREVIEW = 80;
+const MAX_CMD_PREVIEW = 100;
 
 /**
- * Ensure sudo is usable. Returns normally when ready; throws on cancel,
- * wrong password, or non-TUI mode.
+ * Return a valid sudo password, prompting when the cache is cold/expired.
+ * Throws on cancel, wrong password, or non-TUI mode.
  */
-export async function ensureSudo(
+export async function ensurePassword(
   ctx: ExtensionContext,
   st: AsrootState,
   command: string,
-): Promise<void> {
-  if (await sudoCached()) return;
+): Promise<string> {
+  const fresh = freshPassword(st);
+  if (fresh !== null) return fresh;
 
   if (ctx.mode !== "tui" || !ctx.hasUI) {
     throw new Error("asroot needs an interactive TUI to ask for the sudo password.");
@@ -31,19 +38,20 @@ export async function ensureSudo(
 
   const password = await promptSecret(
     ctx,
-    "Administrator access required",
-    `Enter password for ${user} to run: ${preview}`,
+    "Root access requested",
+    `${user} · sudo ${preview}`,
   );
   if (password === null) {
-    throw new Error("User cancelled the password prompt. Ask how to proceed.");
+    throw new Error("User cancelled the password prompt.");
   }
 
   st.stats.prompted++;
   if (!(await validatePassword(password))) {
-    throw new Error("sudo rejected the password. You may call asroot again to retry.");
+    throw new Error("sudo rejected the password. The next sudo will prompt again.");
   }
 
-  // Keep for leak scrubbing; push to shroud as redact-only (never exported).
-  st.password = password;
+  st.cached = { value: password, expiresAt: Date.now() + CACHE_MS };
+  // Redact-only push while cached: shroud scrubs it everywhere, exports nothing.
   notifyShroud(PASSWORD_NAME, password, { ephemeral: true });
+  return password;
 }

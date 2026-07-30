@@ -1,27 +1,27 @@
 /**
- * asroot — sudo for pi with a masked TUI password prompt.
+ * asroot — transparent sudo for pi with a masked TUI password prompt.
  *
- * The sudo password comes from pi's own TUI (secret-kit's MaskedInput)
- * instead of any external askpass helper.
+ * The agent runs plain `sudo ...` in the bash tool. The tool_call hook:
+ *   1. prompts the user for the password (masked input, shows the command)
+ *   2. creates a one-shot fifo and starts a blocked writer for it
+ *   3. rewrites the command to prefer the asroot shim via PATH
+ * The shim's `sudo -S` reads the password from the fifo.
  *
- * Password discipline:
- *  - entered via masked prompt, kept only in extension memory (for scrubbing)
- *  - fed to `sudo -S -k -v` over stdin — never argv, never env, never disk
- *  - pushed to shroud as an ephemeral (redact-only) secret when installed
- *  - exact-match scrubbed from user input and tool output
- *  - raw `sudo` in the bash tool is blocked, steering the agent here
+ * Password discipline: cached in extension memory for 5 minutes (mirroring
+ * sudo's timestamp_timeout), validated on capture, fed through kernel pipes
+ * or stdin. Never on disk, in env, in argv, in command text, in session
+ * files, or in the model's context. Wiped on session shutdown.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createState } from "./state.js";
-import { registerAsrootTool } from "./tool.js";
 import { registerHooks } from "./hooks.js";
-import { registerCommands } from "./commands.js";
 
 export default function (pi: ExtensionAPI) {
   const state = createState();
-
-  registerAsrootTool(pi, state);
   registerHooks(pi, state);
-  registerCommands(pi, state);
+
+  pi.on("session_shutdown", async () => {
+    state.cached = null;
+  });
 }

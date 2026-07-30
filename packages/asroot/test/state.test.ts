@@ -5,7 +5,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createState, referencesSudo, scrubText, PASSWORD_NAME } from "../dist/state.js";
+import {
+  createState,
+  freshPassword,
+  referencesSudo,
+  scrubText,
+  PASSWORD_NAME,
+} from "../dist/state.js";
 import { placeholderFor } from "@uiyzzi/pi-secret-kit";
 
 test("referencesSudo matches real invocations", () => {
@@ -23,16 +29,26 @@ test("referencesSudo ignores lookalikes", () => {
   assert.ok(!referencesSudo("ls /tmp"));
 });
 
-test("scrubText redacts the password and counts hits", () => {
+test("freshPassword returns value while fresh, drops when expired", () => {
   const st = createState();
-  st.password = "hunter2hunter2";
+  st.cached = { value: "hunter2hunter2", expiresAt: Date.now() + 60_000 };
+  assert.equal(freshPassword(st), "hunter2hunter2");
+
+  st.cached = { value: "hunter2hunter2", expiresAt: Date.now() - 1 };
+  assert.equal(freshPassword(st), null);
+  assert.equal(st.cached, null);
+});
+
+test("scrubText redacts the cached password and counts hits", () => {
+  const st = createState();
+  st.cached = { value: "hunter2hunter2", expiresAt: Date.now() + 60_000 };
   const out = scrubText("pw hunter2hunter2 leaked", st);
   assert.ok(out?.includes(placeholderFor(PASSWORD_NAME)));
   assert.ok(!out?.includes("hunter2hunter2"));
   assert.equal(st.stats.scrubbed, 1);
 });
 
-test("scrubText no-ops without a password", () => {
+test("scrubText no-ops without a cached password", () => {
   const st = createState();
   assert.equal(scrubText("anything", st), undefined);
 });
