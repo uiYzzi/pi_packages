@@ -52,3 +52,18 @@ test("scrubText no-ops without a cached password", () => {
   const st = createState();
   assert.equal(scrubText("anything", st), undefined);
 });
+
+test("scrubText skips when shroud owns scrubbing", () => {
+  const st = createState();
+  st.cached = { value: "hunter2hunter2", expiresAt: Date.now() + 60_000 };
+  st.shroudSynced = true;
+  assert.equal(scrubText("pw hunter2hunter2 leaked", st), undefined);
+});
+
+test("expiry resets shroudSynced", () => {
+  const st = createState();
+  st.cached = { value: "hunter2hunter2", expiresAt: Date.now() - 1 };
+  st.shroudSynced = true;
+  assert.equal(freshPassword(st), null);
+  assert.equal(st.shroudSynced, false);
+});

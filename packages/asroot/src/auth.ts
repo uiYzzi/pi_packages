@@ -52,6 +52,7 @@ export async function ensurePassword(
 
   st.cached = { value: password, expiresAt: Date.now() + CACHE_MS };
   // Redact-only push while cached: shroud scrubs it everywhere, exports nothing.
-  notifyShroud(PASSWORD_NAME, password, { ephemeral: true });
+  // When it acknowledges, it owns scrubbing for this password.
+  st.shroudSynced = notifyShroud(PASSWORD_NAME, password, { ephemeral: true });
   return password;
 }

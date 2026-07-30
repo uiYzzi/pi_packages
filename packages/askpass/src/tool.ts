@@ -107,11 +107,14 @@ export function registerAskpassTool(pi: ExtensionAPI, st: AskpassState): void {
       // 1. Export to shell env (never returned to the model)
       process.env[name] = value;
       st.secrets = st.secrets.filter((s) => s.name !== name);
-      st.secrets.push({ name, value, description: p.description });
+      const entry = { name, value, description: p.description, shroudSynced: false };
+      st.secrets.push(entry);
       st.stats.captured++;
 
-      // Teach shroud's redactor right away when it is installed
+      // Teach shroud's redactor right away when it is installed;
+      // on success it owns scrubbing for this value.
       const shroudSynced = notifyShroud(name, value);
+      entry.shroudSynced = shroudSynced;
 
       const confirmations: string[] = [`Secret captured and exported as $${name}.`];
 

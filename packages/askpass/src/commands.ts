@@ -31,9 +31,11 @@ export function registerCommands(pi: ExtensionAPI, st: AskpassState): void {
 
       process.env[name] = value;
       st.secrets = st.secrets.filter((s) => s.name !== name);
-      st.secrets.push({ name, value, description });
+      const entry = { name, value, description, shroudSynced: false };
+      st.secrets.push(entry);
       st.stats.captured++;
       const synced = notifyShroud(name, value);
+      entry.shroudSynced = synced;
       ctx.ui.notify(
         `Captured $${name} — usable in bash, hidden from the agent` +
           (synced ? " (shroud redactor synced)" : ""),

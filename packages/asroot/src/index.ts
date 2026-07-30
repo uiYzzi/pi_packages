@@ -23,5 +23,6 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async () => {
     state.cached = null;
+    state.shroudSynced = false;
   });
 }

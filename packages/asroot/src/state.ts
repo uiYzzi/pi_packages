@@ -21,12 +21,15 @@ export interface CachedPassword {
 
 export interface AsrootState {
   cached: CachedPassword | null;
+  /** True when shroud acknowledged the password — it owns scrubbing then. */
+  shroudSynced: boolean;
   stats: { prompted: number; runs: number; scrubbed: number; blocked: number };
 }
 
 export function createState(): AsrootState {
   return {
     cached: null,
+    shroudSynced: false,
     stats: { prompted: 0, runs: 0, scrubbed: 0, blocked: 0 },
   };
 }
@@ -35,12 +38,13 @@ export function createState(): AsrootState {
 export function freshPassword(st: AsrootState): string | null {
   if (st.cached && Date.now() < st.cached.expiresAt) return st.cached.value;
   st.cached = null;
+  st.shroudSynced = false;
   return null;
 }
 
 /** Exact-match scrub of the sudo password from a text channel. */
 export function scrubText(text: string, st: AsrootState): string | undefined {
-  if (!st.cached) return undefined;
+  if (!st.cached || st.shroudSynced) return undefined;
   const r = scrubValues(text, [{ name: PASSWORD_NAME, value: st.cached.value }]);
   if (!r) return undefined;
   st.stats.scrubbed += r.hits;

@@ -15,6 +15,11 @@ export interface CapturedSecret {
   value: string;
   /** Short human description shown in the prompt dialog. */
   description: string;
+  /**
+   * True when shroud acknowledged this value via the bridge — its engine
+   * covers all channels, so local scrubbing skips it.
+   */
+  shroudSynced?: boolean;
 }
 
 export interface AskpassState {
@@ -35,10 +40,13 @@ export function createState(): AskpassState {
 
 /**
  * Exact-match scrub of captured values from a text channel.
- * Cheap: few secrets per session, short-circuits when nothing matches.
+ * Values already synced to shroud are skipped — shroud's engine redacts
+ * them across more channels anyway.
  */
 export function scrubText(text: string, st: AskpassState): string | undefined {
-  const r = scrubValues(text, st.secrets);
+  const local = st.secrets.filter((s) => !s.shroudSynced);
+  if (local.length === 0) return undefined;
+  const r = scrubValues(text, local);
   if (!r) return undefined;
   st.stats.scrubbed += r.hits;
   return r.text;

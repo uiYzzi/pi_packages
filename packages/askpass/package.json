@@ -1,6 +1,6 @@
 {
   "name": "@uiyzzi/pi-askpass",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "TUI secret prompt for pi — agent asks, user types in a masked input, value never reaches the model",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

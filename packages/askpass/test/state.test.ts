@@ -24,3 +24,13 @@ test("scrubText skips short values and misses", () => {
   assert.equal(scrubText("nothing here", st), undefined);
   assert.equal(st.stats.scrubbed, 0);
 });
+
+test("scrubText skips values synced to shroud", () => {
+  const st = createState();
+  st.secrets.push({ name: "A", value: "aaaa-value", description: "x", shroudSynced: true });
+  st.secrets.push({ name: "B", value: "bbbb-value", description: "y" });
+  // A is shroud-owned: only B gets scrubbed locally
+  const out = scrubText("aaaa-value and bbbb-value", st);
+  assert.ok(out?.includes("aaaa-value"));
+  assert.ok(!out?.includes("bbbb-value"));
+});

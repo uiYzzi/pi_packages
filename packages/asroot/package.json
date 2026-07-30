@@ -1,6 +1,6 @@
 {
   "name": "@uiyzzi/pi-asroot",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "sudo for pi — agent asks, user types their password into a masked TUI input, password never reaches the model",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
