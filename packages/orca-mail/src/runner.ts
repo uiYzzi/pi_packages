@@ -22,7 +22,21 @@ const HARD_TIMEOUT_MS = SERVER_WAIT_MS + 30_000;
 /** How often to re-probe for an active coordinator run while dormant. */
 const PROBE_INTERVAL_MS = 30_000;
 /** Message types a coordinator actually waits on. */
-const WATCH_TYPES = ["worker_done", "escalation", "question"];
+const WATCH_TYPES = ["worker_done", "escalation", "question", "status"];
+
+/**
+ * Orca's --types only gates delivery CREATION (wake condition); the batch
+ * itself carries every unread message in the mailbox, so heartbeat & co.
+ * ride along. Filter client-side: keep watched types, drop the rest.
+ * The ack still covers dropped messages (delivery ack is all-or-nothing),
+ * which is what we want — heartbeat noise is consumed and discarded.
+ */
+function filterWatched(batch: Batch): Batch {
+  const messages = batch.messages.filter(
+    (m) => !m.type || (WATCH_TYPES as string[]).includes(m.type),
+  );
+  return messages.length === batch.messages.length ? batch : { ...batch, messages };
+}
 
 /** Errors meaning "no active coordinator run (anymore)" — go dormant, don't spam. */
 const RUN_GONE_CODES = new Set([
@@ -215,33 +229,46 @@ export function makeOrcaCheck(
       return { messages: [] };
     }
 
-    const args = [
-      "orchestration",
-      "check",
-      "--run",
-      runId,
-      "--wait",
-      "--types",
-      WATCH_TYPES.join(","),
-      "--timeout-ms",
-      String(SERVER_WAIT_MS),
-      "--json",
-    ];
-    if (ackDeliveryId) args.push("--ack", ackDeliveryId);
+    // Check rounds: --types only gates delivery CREATION server-side, so
+    // each batch is filtered client-side. A batch that filters to empty
+    // (e.g. heartbeat-only) must still be acked — otherwise the server
+    // replays the outstanding delivery forever — so its deliveryId rides
+    // as the ack of the next round (the --wait paces the loop).
+    let pendingAck = ackDeliveryId;
+    for (;;) {
+      const args = [
+        "orchestration",
+        "check",
+        "--run",
+        runId,
+        "--wait",
+        "--types",
+        WATCH_TYPES.join(","),
+        "--timeout-ms",
+        String(SERVER_WAIT_MS),
+        "--json",
+      ];
+      if (pendingAck) args.push("--ack", pendingAck);
 
-    const stdout = await spawnJson(cliCommand, args, signal, { hardTimeoutMs: HARD_TIMEOUT_MS });
-    try {
-      return parseCheckJson(stdout);
-    } catch (err) {
-      if (isRunGone(err)) return { messages: [] }; // run ended mid-round
-      if (isContention(err)) {
-        // Another waiter holds the slot (typically our own pre-reload
-        // incarnation winding down). Back off quietly and let the next
-        // round re-probe instead of spamming an error notice.
-        await abortableSleep(probeIntervalMs, signal);
-        return { messages: [] };
+      const stdout = await spawnJson(cliCommand, args, signal, {
+        hardTimeoutMs: HARD_TIMEOUT_MS,
+      });
+      let batch: Batch;
+      try {
+        batch = filterWatched(parseCheckJson(stdout));
+      } catch (err) {
+        if (isRunGone(err)) return { messages: [] }; // run ended mid-round
+        if (isContention(err)) {
+          // Another waiter holds the slot (typically our own pre-reload
+          // incarnation winding down). Back off quietly and let the next
+          // round re-probe instead of spamming an error notice.
+          await abortableSleep(probeIntervalMs, signal);
+          return { messages: [] };
+        }
+        throw err;
       }
-      throw err;
+      if (batch.messages.length > 0 || !batch.deliveryId) return batch;
+      pendingAck = batch.deliveryId; // fully filtered out — ack and keep waiting
     }
   };
 }

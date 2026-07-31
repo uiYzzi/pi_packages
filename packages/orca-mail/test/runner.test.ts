@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseCheckJson, parseRunListJson, makeOrcaCheck } from "../dist/runner.js";
@@ -94,7 +94,13 @@ if [ "$2" = "run-list" ]; then
   exit 0
 fi
 if [ "$2" = "check" ]; then
-  echo "$@" > "${dir}/check-args.txt"
+  echo "$@" >> "${dir}/check-args.txt"
+  if [ -d "${dir}/check-seq" ] && [ "$(ls -A "${dir}/check-seq" 2>/dev/null)" ]; then
+    f=$(ls "${dir}/check-seq" | head -1)
+    cat "${dir}/check-seq/$f"
+    rm "${dir}/check-seq/$f"
+    exit 0
+  fi
   if [ -f "${dir}/check-exit1.json" ]; then
     cat "${dir}/check-exit1.json"
     exit 1
@@ -145,8 +151,71 @@ test("active run: blocking check with --run/--types, ack rides along", async () 
 
   const args = readFileSync(join(dir, "check-args.txt"), "utf8");
   assert.match(args, /--run run_mine/);
-  assert.match(args, /--types worker_done,escalation,question/);
+  assert.match(args, /--types worker_done,escalation,question,status/);
   assert.match(args, /--ack d8/);
+});
+
+test("client-side filter: heartbeat dropped, watched types and untyped kept", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "orca-mail-"));
+  const cli = writeStubCli(dir);
+  writeFileSync(
+    join(dir, "run-list.json"),
+    runList([{ id: "run_mine", coordinator_handle: HANDLE, legacy: 0 }]),
+  );
+  writeFileSync(
+    join(dir, "check.json"),
+    JSON.stringify({
+      ok: true,
+      result: {
+        deliveryId: "d1",
+        messages: [
+          { id: "m1", type: "escalation" },
+          { id: "m2", type: "status" },
+          { id: "m3", type: "heartbeat" },
+          { id: "m4", body: "untyped" },
+        ],
+      },
+    }),
+  );
+  const check = makeOrcaCheck(cli, HANDLE, { probeIntervalMs: 5 });
+  const batch = await check(undefined, ac().signal);
+  assert.deepEqual(
+    batch.messages.map((m) => m.id),
+    ["m1", "m2", "m4"],
+  );
+});
+
+test("fully-filtered batch (heartbeat-only) is acked while waiting continues", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "orca-mail-"));
+  const cli = writeStubCli(dir);
+  writeFileSync(
+    join(dir, "run-list.json"),
+    runList([{ id: "run_mine", coordinator_handle: HANDLE, legacy: 0 }]),
+  );
+  mkdirSync(join(dir, "check-seq"));
+  writeFileSync(
+    join(dir, "check-seq", "1.json"),
+    JSON.stringify({
+      ok: true,
+      result: { deliveryId: "d_hb", messages: [{ id: "hb1", type: "heartbeat" }] },
+    }),
+  );
+  writeFileSync(
+    join(dir, "check-seq", "2.json"),
+    JSON.stringify({
+      ok: true,
+      result: { deliveryId: "d_ok", messages: [{ id: "wd1", type: "worker_done" }] },
+    }),
+  );
+  const check = makeOrcaCheck(cli, HANDLE, { probeIntervalMs: 5 });
+  const batch = await check(undefined, ac().signal);
+  assert.equal(batch.deliveryId, "d_ok");
+  assert.equal(batch.messages.length, 1);
+
+  const args = readFileSync(join(dir, "check-args.txt"), "utf8").trim().split("\n");
+  assert.equal(args.length, 2); // two check rounds
+  assert.doesNotMatch(args[0]!, /--ack/);
+  assert.match(args[1]!, /--ack d_hb/); // filtered batch acked in the next round
 });
 
 test("run gone mid-check (legacy_read_only envelope, exit 1) → empty batch, no throw", async () => {

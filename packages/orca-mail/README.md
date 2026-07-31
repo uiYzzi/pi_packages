@@ -17,7 +17,7 @@ Orca 自带的 push-on-idle 只投递**直发终端 handle** 的邮件；Run 信
 |---|---|
 | **Orca 外**（无 `ORCA_TERMINAL_HANDLE`） | 完全不生效。不注册任何 handler，零 timer、零进程、零损耗 |
 | **Orca 终端内，无 active coordinator run** | 休眠。每 30s 探测一次 run-list，不跑 check、不产生错误 |
-| **有 active coordinator run** | 后台跑阻塞式 `check --run <id> --wait --types worker_done,escalation,question`（扩展进程内，不占 agent turn），邮件到达即注入 |
+| **有 active coordinator run** | 后台跑阻塞式 `check --run <id> --wait --types worker_done,escalation,question,status`（扩展进程内，不占 agent turn），邮件到达即注入 |
 
 注入分两条路：
 
@@ -49,6 +49,7 @@ PR #61 created, tests pass.
 - **重放去重**：ack 丢失导致服务器重投时，按 `deliveryId` 跳过重复注入，只补 ack
 - **run 消失即休眠**：run 结束 / 身份降级（`legacy_read_only` 等）不报错刷屏，回到休眠探测
 - **信箱争用静默重试**：`waiter_exists`（重载会话时新旧桥短暂重叠持有互斥 waiter）不报错，退避后自动恢复
+- **客户端类型过滤**：Orca 的 `--types` 只是唤醒条件，batch 会带上信箱里全部未读（含 heartbeat）。桥在本地丢弃非监听类型；被全部滤掉的 batch 仍会在下一轮带上 ack，避免服务器无限重放
 - **HELD 不死等**：`agent_end`/`agent_settled` 唤醒 held 批次直接投递，不会因 turn 结束而滞留到下个 turn
 - **退避重试**：真正的 CLI 失败保留 slot，15s 后重试，通知节流每分钟最多一条
 
