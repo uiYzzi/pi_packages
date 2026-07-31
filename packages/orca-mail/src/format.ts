@@ -51,4 +51,4 @@ export function formatDelivery(messages: MailMessage[]): string {
 export const SYSTEM_NOTICE = `
 
 ## Orca mail bridge (active extension)
-This session runs in an Orca-managed terminal. Orca orchestration mail is injected into your context automatically as user messages — you never need to run \`orca orchestration check\` or \`check --wait\`; do not poll the mailbox. When an injected message needs an answer, reply via bash with \`orca orchestration reply --id <msg_id> --body "..."\`. Lifecycle reports (worker_done, heartbeat) still go through \`orca orchestration send\` as usual.`;
+This session runs in an Orca-managed terminal. Orca orchestration mail is injected into your context automatically as user messages — run-mailbox reports (worker_done, escalation, question) by this extension, direct terminal mail by Orca itself. You never need to run \`orca orchestration check\` or \`check --wait\`; do not poll the mailbox. When an injected message needs an answer, reply via bash with \`orca orchestration reply --id <msg_id> --body "..."\`. Lifecycle reports (worker_done, heartbeat) still go through \`orca orchestration send\` as usual.`;

@@ -4,12 +4,14 @@
  * Outside an Orca-managed terminal the factory returns before registering
  * a single handler: zero timers, zero processes, zero overhead.
  *
- * Inside Orca, a background loop runs blocking `orca orchestration check
- * --wait` rounds (in the extension process — never as an agent tool call)
- * and injects arriving mail as user messages:
+ * Inside Orca, the bridge watches ONLY the terminal's active coordinator
+ * run mailbox (worker_done / escalation / question) — mail Orca's own
+ * push-on-idle never delivers. Direct terminal-handle mail is left to
+ * Orca's push. Without an active coordinator run the bridge stays dormant:
+ * no check processes, no error spam. Injection:
  *   - agent idle  → pi.sendUserMessage (starts a turn, like the user typed)
  *   - agent busy  → `context` hook splices it into the in-flight request
- * A short system-prompt notice tells the LLM the mailbox is now push-based.
+ * A short system-prompt notice tells the LLM the run mailbox is push-based.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -31,7 +33,7 @@ export default function (pi: ExtensionAPI) {
 
     let lastErrorNotice = 0;
     bridge = new MailBridge({
-      check: makeOrcaCheck(env.cliCommand),
+      check: makeOrcaCheck(env.cliCommand, env.terminalHandle),
       isIdle: () => ctx.isIdle(),
       deliver: (messages) => pi.sendUserMessage(formatDelivery(messages)),
       onError: (err) => {
