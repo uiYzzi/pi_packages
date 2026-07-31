@@ -26,6 +26,20 @@ Orca 自带的 push-on-idle 只投递**直发终端 handle** 的邮件；Run 信
 
 同时在系统提示词追加一小段说明，告诉 LLM：信箱是推送式的，不要自己 poll；要回复用 `orca orchestration reply --id <msg_id> --body "..."`。
 
+注入的信封是纯 XML（与 pi 自身的 `<bd_context>`、`<project_context>` 等注入块同风格），body 实体转义，worker 文本不会破坏信封：
+
+```xml
+<orca-mail count="1" source="pi-orca-mail">
+<note>Auto-injected orchestration mail. Do not poll the mailbox …</note>
+<message type="worker_done" id="msg_a1b2" from="term_abc" at="2026-07-31T15:24:14Z">
+<subject>Wave 3 done</subject>
+<body>
+PR #61 created, tests pass.
+</body>
+</message>
+</orca-mail>
+```
+
 ## 正确性
 
 - **服务器即队列**：本地最多持有一个 batch。未 ack 的 batch Orca 会原样重放，桥不建本地缓冲

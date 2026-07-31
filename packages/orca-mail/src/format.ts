@@ -1,5 +1,10 @@
 /**
  * Rendering of Orca orchestration mail into user-message text.
+ *
+ * v0.2.1: the envelope is pure XML, matching pi's other injected context
+ * blocks (<bd_context>, <project_context>, …). Tags give unambiguous
+ * per-message boundaries; bodies are entity-escaped so worker text can
+ * never break the envelope.
  */
 
 export interface MailMessage {
@@ -18,30 +23,41 @@ function cap(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}\n…(truncated)` : text;
 }
 
-function renderOne(msg: MailMessage, index: number): string {
-  const head: string[] = [`── message ${index + 1}`];
-  if (msg.type) head.push(`type=${msg.type}`);
-  if (msg.from) head.push(`from=${msg.from}`);
-  if (msg.id) head.push(`id=${msg.id}`);
-  if (msg.sentAt) head.push(`at=${msg.sentAt}`);
-  const parts = [head.join(" ")];
-  if (msg.subject) parts.push(`Subject: ${msg.subject}`);
-  if (msg.body) parts.push(cap(msg.body, BODY_CAP));
-  if (msg.type === "question" && msg.id) {
-    parts.push(`Reply with: orca orchestration reply --id ${msg.id} --body "..."`);
-  }
-  return parts.join("\n");
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeAttr(text: string): string {
+  return `${escapeXml(text).replace(/"/g, "&quot;")}`;
+}
+
+function renderOne(msg: MailMessage): string {
+  const attrs: string[] = [];
+  if (msg.type) attrs.push(`type="${escapeAttr(msg.type)}"`);
+  if (msg.id) attrs.push(`id="${escapeAttr(msg.id)}"`);
+  if (msg.from) attrs.push(`from="${escapeAttr(msg.from)}"`);
+  if (msg.sentAt) attrs.push(`at="${escapeAttr(msg.sentAt)}"`);
+
+  const lines = [`<message${attrs.length ? " " + attrs.join(" ") : ""}>`];
+  if (msg.subject) lines.push(`<subject>${escapeXml(msg.subject)}</subject>`);
+  if (msg.body) lines.push("<body>", escapeXml(cap(msg.body, BODY_CAP)), "</body>");
+  lines.push("</message>");
+  return lines.join("\n");
 }
 
 /**
- * Format a batch of mail into a single user-prompt text for injection.
+ * Format a batch of mail into a single XML envelope for injection.
  */
 export function formatDelivery(messages: MailMessage[]): string {
-  const header =
-    `📬 Orca orchestration mail — ${messages.length} message(s) arrived.\n` +
-    `This mail was auto-injected by the orca-mail extension. ` +
-    `Do NOT run \`orca orchestration check --wait\` yourself; new mail will keep arriving automatically.`;
-  return [header, ...messages.map(renderOne)].join("\n\n");
+  return [
+    `<orca-mail count="${messages.length}" source="pi-orca-mail">`,
+    `<note>Auto-injected orchestration mail. Do not poll the mailbox (no \`orca orchestration check\`); new mail arrives automatically. Reply when needed: orca orchestration reply --id &lt;message-id&gt; --body "..."</note>`,
+    ...messages.map(renderOne),
+    `</orca-mail>`,
+  ].join("\n");
 }
 
 /**
@@ -51,4 +67,4 @@ export function formatDelivery(messages: MailMessage[]): string {
 export const SYSTEM_NOTICE = `
 
 ## Orca mail bridge (active extension)
-This session runs in an Orca-managed terminal. Orca orchestration mail is injected into your context automatically as user messages — run-mailbox reports (worker_done, escalation, question) by this extension, direct terminal mail by Orca itself. You never need to run \`orca orchestration check\` or \`check --wait\`; do not poll the mailbox. When an injected message needs an answer, reply via bash with \`orca orchestration reply --id <msg_id> --body "..."\`. Lifecycle reports (worker_done, heartbeat) still go through \`orca orchestration send\` as usual.`;
+Orca orchestration mail auto-arrives as \`<orca-mail>\` user messages — run-mailbox reports (worker_done/escalation/question) via this extension, direct terminal mail via Orca itself. Never poll with \`orca orchestration check\`. Reply with \`orca orchestration reply --id <msg_id> --body "..."\`; send lifecycle reports (worker_done, heartbeat) with \`orca orchestration send\`.`;
