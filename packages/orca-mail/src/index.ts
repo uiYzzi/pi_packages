@@ -9,7 +9,8 @@
  * push-on-idle never delivers. Direct terminal-handle mail is left to
  * Orca's push. Without an active coordinator run the bridge stays dormant:
  * no check processes, no error spam. Injection:
- *   - agent idle  → pi.sendUserMessage (starts a turn, like the user typed)
+ *   - agent idle  → pi.sendMessage triggerTurn (starts a turn; display:false,
+ *     the TUI shows a 📬 transcript entry instead of the raw envelope)
  *   - agent busy  → `context` hook splices it into the in-flight request
  * A short system-prompt notice tells the LLM the run mailbox is push-based.
  */
@@ -57,9 +58,14 @@ export default function (pi: ExtensionAPI) {
       check: makeOrcaCheck(env.cliCommand, env.terminalHandle),
       isIdle: () => ctx.isIdle(),
       deliver: (messages) => {
-        // sendUserMessage throws when the agent went busy — the batch then
-        // stays held and the context hook mirrors the entry instead.
-        pi.sendUserMessage(formatDelivery(messages));
+        // display:false keeps the raw XML out of the TUI (the appendEntry
+        // banner is the visible face); the envelope still enters context
+        // and triggerTurn starts a turn while idle. Throws if the agent
+        // went busy — the batch then stays held for the hook / idle wake.
+        pi.sendMessage(
+          { customType: "orca-mail", content: formatDelivery(messages), display: false },
+          { triggerTurn: true },
+        );
         pi.appendEntry("orca-mail", mailEntryData(messages));
       },
       onError: (err) => {
@@ -86,6 +92,12 @@ export default function (pi: ExtensionAPI) {
     });
     return { messages: event.messages };
   });
+
+  // Mail held during a turn's final LLM call sees no context event —
+  // wake the bridge when the agent goes idle so it delivers directly.
+  const wakeOnIdle = () => bridge?.notifyIdle();
+  pi.on("agent_end", wakeOnIdle);
+  pi.on("agent_settled", wakeOnIdle);
 
   // Tell the LLM the mailbox is push-based now.
   pi.on("before_agent_start", (event) => ({

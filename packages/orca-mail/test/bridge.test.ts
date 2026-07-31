@@ -4,6 +4,15 @@ import { MailBridge, type Batch, type BridgeDeps } from "../dist/bridge.js";
 
 const tick = () => new Promise<void>((r) => setImmediate(r));
 
+/** Poll a condition with real timers — robust under scheduler jitter. */
+async function waitFor(cond: () => boolean, timeoutMs = 500): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!cond()) {
+    if (Date.now() > deadline) throw new Error("waitFor timed out");
+    await new Promise<void>((r) => setTimeout(r, 1));
+  }
+}
+
 /**
  * A bridge whose async surfaces are all scriptable from the test.
  * Nothing starts until start() is called — queue the rounds first.
@@ -84,20 +93,19 @@ test("busy: batch is held until the context hook takes it; then acked", async (t
   await s.done.catch(() => {});
 });
 
-test("held batch is delivered directly once the agent goes idle (no context hook)", async (t) => {
+test("held batch is delivered when the agent signals idle (no context hook)", async (t) => {
   let idle = false;
   const r = rig({ isIdle: () => idle });
   r.queue.push(batch("d1"));
   const s = r.start();
   t.after(s.stop);
-  await tick();
-  assert.equal(r.delivered.length, 0); // busy → held
-  assert.ok(r.bridge.hasHeld());
+  await waitFor(() => r.bridge.hasHeld());
+  assert.equal(r.delivered.length, 0); // busy → held, nothing delivered
 
   idle = true; // turn ended with no further context event
-  for (let i = 0; i < 5; i++) await tick();
-  assert.equal(r.delivered.length, 1); // delivered directly on idle
-  await tick();
+  r.bridge.notifyIdle(); // pi agent_end/agent_settled wired to this
+  await waitFor(() => r.delivered.length === 1);
+  await waitFor(() => r.calls.length >= 2);
   assert.deepEqual(r.calls.slice(0, 2).map((c) => c.ackId), [undefined, "d1"]);
   s.stop();
   await s.done.catch(() => {});
@@ -149,7 +157,7 @@ test("check errors keep the unacked slot and retry after backoff", async (t) => 
   r.queue.push(batch("d1"), new Error("runtime down"), empty());
   const s = r.start();
   t.after(s.stop);
-  for (let i = 0; i < 4; i++) await tick();
+  await waitFor(() => r.calls.length >= 3);
   assert.equal(r.errors.length, 1);
   assert.deepEqual(r.calls.slice(0, 3).map((c) => c.ackId), [undefined, "d1", "d1"]);
   s.stop();

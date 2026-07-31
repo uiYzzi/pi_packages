@@ -21,10 +21,10 @@ Orca 自带的 push-on-idle 只投递**直发终端 handle** 的邮件；Run 信
 
 注入分两条路：
 
-- **agent 空闲** → `pi.sendUserMessage()`，像用户打字一样开新 turn
-- **agent 忙碌** → `context` 事件钩子，把邮件拼进进行中的 LLM 请求（这是相对 Orca push-on-idle 的本质优势：推送只在 idle 跳变触发）。若邮件在 turn 最后一次 LLM 调用期间到达（不会再有 context 事件），桥在 agent 空闲后 1s 内直接投递，不会卡到下一个 turn
+- **agent 空闲** → `pi.sendMessage({display: false}, {triggerTurn: true})` 开新 turn：XML 信封进上下文但不在 TUI 渲染
+- **agent 忙碌** → `context` 事件钩子，把邮件拼进进行中的 LLM 请求（这是相对 Orca push-on-idle 的本质优势：推送只在 idle 跳变触发）。若邮件在 turn 最后一次 LLM 调用期间到达（不会再有 context 事件），`agent_end`/`agent_settled` 事件唤醒桥直接投递——事件驱动，无轮询，不会卡到下一个 turn
 
-注入的用户消息在交互式 TUI 里不可见，因此每批邮件同时镜像为一条 transcript entry（`pi.appendEntry` + `registerEntryRenderer`）：聊天流里显示 📬 横幅（展开可见 body），纯 TUI 展示、不进 LLM 上下文。
+TUI 可视面由 transcript entry 承担：每批邮件镜像为一条 `pi.appendEntry` + `registerEntryRenderer` 横幅（📬，展开可见 body），纯 TUI 展示、不进 LLM 上下文。
 
 同时在系统提示词追加一小段说明，告诉 LLM：信箱是推送式的，不要自己 poll；要回复用 `orca orchestration reply --id <msg_id> --body "..."`。
 
@@ -49,7 +49,7 @@ PR #61 created, tests pass.
 - **重放去重**：ack 丢失导致服务器重投时，按 `deliveryId` 跳过重复注入，只补 ack
 - **run 消失即休眠**：run 结束 / 身份降级（`legacy_read_only` 等）不报错刷屏，回到休眠探测
 - **信箱争用静默重试**：`waiter_exists`（重载会话时新旧桥短暂重叠持有互斥 waiter）不报错，退避后自动恢复
-- **HELD 不死等**：held 批次在空闲时直接投递，不会因 turn 结束而滞留到下个 turn
+- **HELD 不死等**：`agent_end`/`agent_settled` 唤醒 held 批次直接投递，不会因 turn 结束而滞留到下个 turn
 - **退避重试**：真正的 CLI 失败保留 slot，15s 后重试，通知节流每分钟最多一条
 
 ## 架构

@@ -37,8 +37,6 @@ export interface BridgeDeps {
   isIdle: () => boolean;
   onError?: (err: unknown) => void;
   retryDelayMs?: number;
-  /** Poll interval for delivering a held batch once the agent goes idle. */
-  heldIdlePollMs?: number;
   /** Injectable for tests. */
   sleep?: (ms: number) => Promise<void>;
 }
@@ -70,6 +68,16 @@ export class MailBridge {
     return this.slot.phase === "held";
   }
 
+  /**
+   * The host signals the agent just went idle (pi `agent_end` /
+   * `agent_settled`). Wakes the held wait so the loop can deliver the
+   * batch directly instead of waiting for a context hook that may never
+   * come (mail arrived during the turn's final LLM call).
+   */
+  notifyIdle(): void {
+    this.releaseHeld();
+  }
+
   stop(): void {
     this.stopped = true;
     this.releaseHeld();
@@ -92,28 +100,26 @@ export class MailBridge {
   async run(signal: AbortSignal): Promise<void> {
     const sleep = this.deps.sleep ?? defaultSleep;
     const retryDelay = this.deps.retryDelayMs ?? 15_000;
-    const heldIdlePollMs = this.deps.heldIdlePollMs ?? 1_000;
 
     while (!this.stopped && !signal.aborted) {
-      // A held batch pauses the loop until the context hook takes it.
-      // But if the mail arrived during the turn's FINAL LLM call, no
-      // context event is coming — re-check on a timer and deliver
-      // directly once the agent is idle, instead of parking the batch
-      // until some future turn. New mail accumulates server-side either
-      // way; nothing is lost.
+      // A held batch waits here until woken by one of two events:
+      //   1. takeHeld()      — the context hook splices it into an in-flight request
+      //   2. notifyIdle()    — agent_end/agent_settled fired; deliver directly
+      // Mail arriving during a turn's FINAL LLM call never sees a context
+      // event, which is why (2) exists — without it the batch would park
+      // until some future turn. New mail accumulates server-side either way.
       if (this.slot.phase === "held") {
-        const taken = new Promise<void>((resolve) => {
+        await new Promise<void>((resolve) => {
           this.heldTaken = resolve;
         });
-        await Promise.race([taken, sleep(heldIdlePollMs)]);
         if (this.slot.phase !== "held") continue; // context hook took it
-        if (!this.deps.isIdle()) continue; // still busy — keep waiting
+        if (!this.deps.isIdle()) continue; // spurious wake — keep waiting
         const { batch } = this.slot;
         try {
           await this.deps.deliver(batch.messages);
           this.markInjected(batch);
         } catch {
-          // Went busy again between the idle check and deliver — stay held.
+          // Went busy again between the wake and deliver — stay held.
         }
         continue;
       }
