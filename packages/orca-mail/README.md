@@ -48,6 +48,7 @@ PR #61 created, tests pass.
 - **只 ack 已投递**：ack 随下一轮 `check --ack <id>` 发出；投递失败（agent 刚好变忙）转 held 等钩子
 - **重放去重**：ack 丢失导致服务器重投时，按 `deliveryId` 跳过重复注入，只补 ack
 - **run 消失即休眠**：run 结束 / 身份降级（`legacy_read_only` 等）不报错刷屏，回到休眠探测
+- **信箱争用静默重试**：`waiter_exists`（重载会话时新旧桥短暂重叠持有互斥 waiter）不报错，退避后自动恢复
 - **退避重试**：真正的 CLI 失败保留 slot，15s 后重试，通知节流每分钟最多一条
 
 ## 架构

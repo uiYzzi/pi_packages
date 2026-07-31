@@ -166,6 +166,26 @@ test("run gone mid-check (legacy_read_only envelope, exit 1) → empty batch, no
   assert.equal(batch.deliveryId, undefined);
 });
 
+test("waiter contention (waiter_exists) → quiet empty batch, no throw", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "orca-mail-"));
+  const cli = writeStubCli(dir);
+  writeFileSync(
+    join(dir, "run-list.json"),
+    runList([{ id: "run_mine", coordinator_handle: HANDLE, legacy: 0 }]),
+  );
+  writeFileSync(
+    join(dir, "check-exit1.json"),
+    JSON.stringify({
+      ok: false,
+      error: { code: "waiter_exists", message: "Run run_mine already has an active actionable waiter." },
+    }),
+  );
+  const check = makeOrcaCheck(cli, HANDLE, { probeIntervalMs: 5 });
+  const batch = await check(undefined, ac().signal);
+  assert.equal(batch.messages.length, 0);
+  assert.equal(batch.deliveryId, undefined);
+});
+
 test("run-list failing hard (non-run-gone) rejects", async () => {
   const dir = mkdtempSync(join(tmpdir(), "orca-mail-"));
   const cli = writeStubCli(dir);

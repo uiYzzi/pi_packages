@@ -33,6 +33,13 @@ const RUN_GONE_CODES = new Set([
 ]);
 
 /**
+ * Errors meaning "another consumer holds this run mailbox's exclusive
+ * waiter slot" — almost always our own previous session incarnation
+ * overlapping a reload for a few seconds. Retry quietly, never notify.
+ */
+const CONTENTION_CODES = new Set(["waiter_exists"]);
+
+/**
  * Parse the `--json` envelope: either `{ ok, result: {...} }` or a bare
  * result object. Tolerant about delivery-id field naming.
  */
@@ -95,6 +102,13 @@ function isRunGone(err: unknown): boolean {
   if (code && RUN_GONE_CODES.has(code)) return true;
   const message = err instanceof Error ? err.message : String(err);
   return /legacy_read_only|no active (coordinator )?run|run not found/i.test(message);
+}
+
+function isContention(err: unknown): boolean {
+  const code = (err as { code?: string } | undefined)?.code;
+  if (code && CONTENTION_CODES.has(code)) return true;
+  const message = err instanceof Error ? err.message : String(err);
+  return /waiter_exists|active actionable waiter/i.test(message);
 }
 
 interface SpawnJsonOptions {
@@ -220,6 +234,13 @@ export function makeOrcaCheck(
       return parseCheckJson(stdout);
     } catch (err) {
       if (isRunGone(err)) return { messages: [] }; // run ended mid-round
+      if (isContention(err)) {
+        // Another waiter holds the slot (typically our own pre-reload
+        // incarnation winding down). Back off quietly and let the next
+        // round re-probe instead of spamming an error notice.
+        await abortableSleep(probeIntervalMs, signal);
+        return { messages: [] };
+      }
       throw err;
     }
   };
