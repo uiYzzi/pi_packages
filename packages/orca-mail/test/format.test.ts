@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatDelivery, SYSTEM_NOTICE } from "../dist/format.js";
+import { formatDelivery, mailEntryData, SYSTEM_NOTICE } from "../dist/format.js";
 
 test("envelope carries count, source and the no-poll note", () => {
   const text = formatDelivery([{ subject: "hi", body: "x" }]);
@@ -73,4 +73,33 @@ test("system notice forbids mailbox polling and mentions the xml envelope", () =
   assert.match(SYSTEM_NOTICE, /Never poll with `orca orchestration check`/);
   assert.match(SYSTEM_NOTICE, /orchestration reply/);
   assert.match(SYSTEM_NOTICE, /<orca-mail>/);
+});
+
+test("mailEntryData maps fields and caps bodies", () => {
+  const data = mailEntryData([
+    {
+      id: "msg_1",
+      type: "worker_done",
+      from: "term-9",
+      subject: "done",
+      body: "x".repeat(10_000),
+      extra: "dropped",
+    },
+    { subject: "sparse" },
+  ]);
+  assert.equal(data.messages.length, 2);
+  const first = data.messages[0]!;
+  assert.equal(first.id, "msg_1");
+  assert.equal(first.type, "worker_done");
+  assert.ok(first.body!.length < 4100);
+  assert.match(first.body!, /truncated/);
+  assert.equal((first as Record<string, unknown>).extra, undefined);
+  const second = data.messages[1]!;
+  assert.deepEqual(Object.keys(second), ["subject"]);
+});
+
+test("mailEntryData caps long subjects", () => {
+  const data = mailEntryData([{ subject: "s".repeat(1000) }]);
+  assert.ok(data.messages[0]!.subject!.length < 250);
+  assert.match(data.messages[0]!.subject!, /truncated/);
 });

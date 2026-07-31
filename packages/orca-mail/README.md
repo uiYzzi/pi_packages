@@ -24,6 +24,8 @@ Orca 自带的 push-on-idle 只投递**直发终端 handle** 的邮件；Run 信
 - **agent 空闲** → `pi.sendUserMessage()`，像用户打字一样开新 turn
 - **agent 忙碌** → `context` 事件钩子，把邮件拼进进行中的 LLM 请求（这是相对 Orca push-on-idle 的本质优势：推送只在 idle 跳变触发）
 
+注入的用户消息在交互式 TUI 里不可见，因此每批邮件同时镜像为一条 transcript entry（`pi.appendEntry` + `registerEntryRenderer`）：聊天流里显示 📬 横幅（展开可见 body），纯 TUI 展示、不进 LLM 上下文。
+
 同时在系统提示词追加一小段说明，告诉 LLM：信箱是推送式的，不要自己 poll；要回复用 `orca orchestration reply --id <msg_id> --body "..."`。
 
 注入的信封是纯 XML（与 pi 自身的 `<bd_context>`、`<project_context>` 等注入块同风格），body 实体转义，worker 文本不会破坏信封：

@@ -1,6 +1,6 @@
 {
   "name": "@uiyzzi/pi-orca-mail",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Auto-inject Orca orchestration mail into pi agents — no blocking check --wait needed",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -14,12 +14,14 @@
     "test": "tsc && node --test --experimental-strip-types --disable-warning=ExperimentalWarning test/*.test.ts"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.74.0"
+    "@earendil-works/pi-coding-agent": ">=0.83.0",
+    "@earendil-works/pi-tui": "*"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.79.4",
+    "@earendil-works/pi-coding-agent": "^0.83.0",
     "@types/node": "^20.10.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "@earendil-works/pi-tui": "^0.83.0"
   },
   "pi": {
     "extensions": [

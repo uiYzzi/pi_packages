@@ -18,6 +18,8 @@ export interface MailMessage {
 }
 
 const BODY_CAP = 4000;
+/** Subjects are single-line in the TUI banner — keep them short. */
+const SUBJECT_CAP = 200;
 
 function cap(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}\n…(truncated)` : text;
@@ -58,6 +60,38 @@ export function formatDelivery(messages: MailMessage[]): string {
     ...messages.map(renderOne),
     `</orca-mail>`,
   ].join("\n");
+}
+
+/**
+ * TUI transcript entry payload (pi.appendEntry + registerEntryRenderer).
+ * Injected user messages are invisible in the interactive TUI; this entry
+ * renders a compact banner in the chat transcript so the human sees the
+ * same mail the agent got. TUI-only: never enters LLM context.
+ */
+export interface MailEntryMessage {
+  id?: string;
+  type?: string;
+  from?: string;
+  subject?: string;
+  body?: string;
+}
+
+export interface MailEntryData {
+  messages: MailEntryMessage[];
+}
+
+export function mailEntryData(messages: MailMessage[]): MailEntryData {
+  return {
+    messages: messages.map((m) => {
+      const out: MailEntryMessage = {};
+      if (m.id) out.id = m.id;
+      if (m.type) out.type = m.type;
+      if (m.from) out.from = m.from;
+      if (m.subject) out.subject = cap(m.subject, SUBJECT_CAP);
+      if (m.body) out.body = cap(m.body, BODY_CAP);
+      return out;
+    }),
+  };
 }
 
 /**

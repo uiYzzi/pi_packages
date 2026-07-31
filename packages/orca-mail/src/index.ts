@@ -15,14 +15,35 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Box, Text } from "@earendil-works/pi-tui";
 import { detectOrcaEnv } from "./env.js";
 import { MailBridge } from "./bridge.js";
 import { makeOrcaCheck } from "./runner.js";
-import { formatDelivery, SYSTEM_NOTICE } from "./format.js";
+import { formatDelivery, mailEntryData, SYSTEM_NOTICE, type MailEntryData } from "./format.js";
 
 export default function (pi: ExtensionAPI) {
   const env = detectOrcaEnv();
   if (!env) return; // not an Orca terminal — fully inert
+
+  // Injected user messages are invisible in the interactive TUI, so mirror
+  // every delivered batch as a transcript entry (TUI-only, no LLM context).
+  pi.registerEntryRenderer("orca-mail", (entry, { expanded }, theme) => {
+    const messages = (entry.data as MailEntryData | undefined)?.messages ?? [];
+    const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
+    if (messages.length === 0) {
+      box.addChild(new Text("📬 orca mail"));
+      return box;
+    }
+    for (const msg of messages) {
+      const head = `📬 [${msg.type ?? "mail"}] ${msg.subject ?? "(no subject)"}`;
+      box.addChild(new Text(theme.bold(head) + (msg.from ? theme.fg("dim", ` — ${msg.from}`) : "")));
+      if (expanded) {
+        if (msg.id) box.addChild(new Text(theme.fg("dim", `id: ${msg.id}`)));
+        if (msg.body) box.addChild(new Text(msg.body));
+      }
+    }
+    return box;
+  });
 
   let bridge: MailBridge | undefined;
   let abort: AbortController | undefined;
@@ -35,7 +56,12 @@ export default function (pi: ExtensionAPI) {
     bridge = new MailBridge({
       check: makeOrcaCheck(env.cliCommand, env.terminalHandle),
       isIdle: () => ctx.isIdle(),
-      deliver: (messages) => pi.sendUserMessage(formatDelivery(messages)),
+      deliver: (messages) => {
+        // sendUserMessage throws when the agent went busy — the batch then
+        // stays held and the context hook mirrors the entry instead.
+        pi.sendUserMessage(formatDelivery(messages));
+        pi.appendEntry("orca-mail", mailEntryData(messages));
+      },
       onError: (err) => {
         // Throttle to one notice per minute; the loop keeps retrying.
         const now = Date.now();
@@ -52,6 +78,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("context", (event) => {
     const batch = bridge?.takeHeld();
     if (!batch) return undefined;
+    pi.appendEntry("orca-mail", mailEntryData(batch.messages));
     event.messages.push({
       role: "user",
       content: [{ type: "text", text: formatDelivery(batch.messages) }],
