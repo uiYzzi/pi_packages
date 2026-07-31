@@ -1,0 +1,44 @@
+{
+  "name": "@uiyzzi/pi-orca-mail",
+  "version": "0.1.0",
+  "description": "Auto-inject Orca orchestration mail into pi agents — no blocking check --wait needed",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "test": "tsc && node --test --experimental-strip-types --disable-warning=ExperimentalWarning test/*.test.ts"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.74.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.79.4",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  },
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/uiYzzi/pi_packages.git",
+    "directory": "packages/orca-mail"
+  },
+  "author": "uiYzzi",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "orca",
+    "orchestration",
+    "mail",
+    "messaging"
+  ]
+}

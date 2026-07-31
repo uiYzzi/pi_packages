@@ -10,6 +10,7 @@
 | [askpass](./packages/askpass/) | 弹掩码输入框收密钥，值直接进 env |
 | [asroot](./packages/asroot/) | sudo 提权，密码走掩码输入框，agent 碰不到 |
 | [secret-kit](./packages/secret-kit/) | askpass 和 asroot 共用的组件库 |
+| [orca-mail](./packages/orca-mail/) | Orca 信箱自动推送，agent 不用 check --wait 阻塞轮询 |
 
 ## 装
 
