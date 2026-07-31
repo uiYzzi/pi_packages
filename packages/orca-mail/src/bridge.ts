@@ -37,6 +37,8 @@ export interface BridgeDeps {
   isIdle: () => boolean;
   onError?: (err: unknown) => void;
   retryDelayMs?: number;
+  /** Poll interval for delivering a held batch once the agent goes idle. */
+  heldIdlePollMs?: number;
   /** Injectable for tests. */
   sleep?: (ms: number) => Promise<void>;
 }
@@ -90,14 +92,29 @@ export class MailBridge {
   async run(signal: AbortSignal): Promise<void> {
     const sleep = this.deps.sleep ?? defaultSleep;
     const retryDelay = this.deps.retryDelayMs ?? 15_000;
+    const heldIdlePollMs = this.deps.heldIdlePollMs ?? 1_000;
 
     while (!this.stopped && !signal.aborted) {
       // A held batch pauses the loop until the context hook takes it.
-      // New mail accumulates server-side; nothing is lost.
+      // But if the mail arrived during the turn's FINAL LLM call, no
+      // context event is coming — re-check on a timer and deliver
+      // directly once the agent is idle, instead of parking the batch
+      // until some future turn. New mail accumulates server-side either
+      // way; nothing is lost.
       if (this.slot.phase === "held") {
-        await new Promise<void>((resolve) => {
+        const taken = new Promise<void>((resolve) => {
           this.heldTaken = resolve;
         });
+        await Promise.race([taken, sleep(heldIdlePollMs)]);
+        if (this.slot.phase !== "held") continue; // context hook took it
+        if (!this.deps.isIdle()) continue; // still busy — keep waiting
+        const { batch } = this.slot;
+        try {
+          await this.deps.deliver(batch.messages);
+          this.markInjected(batch);
+        } catch {
+          // Went busy again between the idle check and deliver — stay held.
+        }
         continue;
       }
 

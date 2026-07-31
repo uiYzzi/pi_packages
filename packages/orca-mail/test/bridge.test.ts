@@ -28,7 +28,7 @@ function rig(overrides: Partial<BridgeDeps> = {}) {
     },
     isIdle: () => true,
     onError: (e) => errors.push(e),
-    sleep: () => Promise.resolve(),
+    sleep: () => new Promise<void>((r) => setTimeout(r, 0)),
     ...overrides,
   };
   const bridge = new MailBridge(deps);
@@ -78,6 +78,25 @@ test("busy: batch is held until the context hook takes it; then acked", async (t
   const held = r.bridge.takeHeld();
   assert.equal(held?.deliveryId, "d1");
   await tick();
+  await tick();
+  assert.deepEqual(r.calls.slice(0, 2).map((c) => c.ackId), [undefined, "d1"]);
+  s.stop();
+  await s.done.catch(() => {});
+});
+
+test("held batch is delivered directly once the agent goes idle (no context hook)", async (t) => {
+  let idle = false;
+  const r = rig({ isIdle: () => idle });
+  r.queue.push(batch("d1"));
+  const s = r.start();
+  t.after(s.stop);
+  await tick();
+  assert.equal(r.delivered.length, 0); // busy → held
+  assert.ok(r.bridge.hasHeld());
+
+  idle = true; // turn ended with no further context event
+  for (let i = 0; i < 5; i++) await tick();
+  assert.equal(r.delivered.length, 1); // delivered directly on idle
   await tick();
   assert.deepEqual(r.calls.slice(0, 2).map((c) => c.ackId), [undefined, "d1"]);
   s.stop();
